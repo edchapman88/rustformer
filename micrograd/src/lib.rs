@@ -2,46 +2,46 @@ use std::ops::{Add, Mul, Sub};
 use autograd as ag;
 
 #[derive(PartialEq, Debug)]
-struct Value<'a> {
+struct Value<'val> {
     data: i32,
     grad: i32,
-    _op: Option<Operations<'a>>
+    _op: Option<Operations<'val>>
 }
 
 #[derive(PartialEq, Debug)]
-enum Operations<'a> {
-    Add(Box<(&'a mut Value<'a>, &'a mut Value<'a>)>),
-    Sub(Box<(Value<'a>,Value<'a>)>),
-    Mul(Box<(Value<'a>, Value<'a>)>),
-    Pow(Box<&'a mut Value<'a>>,u32)
+enum Operations<'val> {
+    Add(Box<(&'val mut Value<'val>, &'val mut Value<'val>)>),
+    // Sub(Box<(Value<'a>,Value<'a>)>),
+    // Mul(Box<(Value<'a>, Value<'a>)>),
+    // Pow(Box<&'a mut Value<'a>>,u32)
 }
 
 impl Operations<'_> {
     fn _backward (&mut self, out_grad: i32) {
         match self {
             Operations::Add(bxd_tup) => {
-                let (val1, val2) = &mut *(*bxd_tup);
+                let (val1, val2) = *(*bxd_tup);
                 val1.grad += out_grad;
                 val2.grad += out_grad;
 
                 val1.backward();
                 val2.backward();
             },
-            Operations::Sub(bxd_tup) => {
+            // Operations::Sub(bxd_tup) => {
 
-            },
-            Operations::Mul(bxd_tup) => {
-                let (val1, val2) = &mut *(*bxd_tup);
-                val1.grad += val2.data * out_grad;
-                val2.grad += val1.data * out_grad;
+            // },
+            // Operations::Mul(bxd_tup) => {
+            //     let (val1, val2) = &mut *(*bxd_tup);
+            //     val1.grad += val2.data * out_grad;
+            //     val2.grad += val1.data * out_grad;
 
-                val1.backward();
-                val2.backward();
-            },
-            Operations::Pow(bxd_val, exp) => {
-                let val = &mut *(*bxd_val);
-                val.grad += (*exp as i32 * val.data.pow(*exp-1_u32)) * out_grad;
-            }
+            //     val1.backward();
+            //     val2.backward();
+            // },
+            // Operations::Pow(bxd_val, exp) => {
+            //     let val = &mut *(*bxd_val);
+            //     val.grad += (*exp as i32 * val.data.pow(*exp-1_u32)) * out_grad;
+            // }
         }
     }
 }
@@ -51,10 +51,10 @@ impl Value<'_> {
         Value { data, grad: 0, _op:op }
     }
 
-    fn pow(self, exp: u32) -> Self {
-        Value::new(self.data.pow(exp),
-                    Some(Operations::Pow(Box::new(&mut self),exp)))
-    }
+    // fn pow(mut self, exp: u32) -> Self {
+    //     Value::new(self.data.pow(exp),
+    //                 Some(Operations::Pow(Box::new(&mut self),exp)))
+    // }
 
     fn backward(&mut self) {
         if let Some(ref mut op) = self._op {
@@ -79,32 +79,32 @@ impl Value<'_> {
 //     }
 // }
 
-impl Add for Value<'_> {
-    type Output = Self;
-    fn add(mut self, mut rhs: Self) -> Self::Output {
+impl<'a,'b,'c,'d> Add<&'d mut Value<'c>> for &'b mut Value<'a> {
+    type Output = Value<'a>;
+    fn add(self, rhs: Self) -> Self::Output {
         Value::new(
             self.data + rhs.data,   // data
-            Some(Operations::Add(Box::new((&mut self, &mut rhs)))))  // operation
+            Some(Operations::Add(Box::new((self, rhs)))))  // operation
     }
 }
 
-impl Sub for Value<'_> {
-    type Output = Self;
-    fn sub(self, rhs: Self) -> Self::Output {
-        Value::new(
-            self.data - rhs.data,   // data
-            Some(Operations::Sub(Box::new((self,rhs)))))  // operation
-    }
-}
+// impl Sub for Value<'_> {
+//     type Output = Self;
+//     fn sub(self, rhs: Self) -> Self::Output {
+//         Value::new(
+//             self.data - rhs.data,   // data
+//             Some(Operations::Sub(Box::new((self,rhs)))))  // operation
+//     }
+// }
 
-impl Mul for Value<'_> {
-    type Output = Self;
-    fn mul(self, rhs: Self) -> Self::Output {
-        Value::new(
-            self.data * rhs.data,   // data
-            Some(Operations::Mul(Box::new((self, rhs)))))  // operation
-    }
-}
+// impl Mul for Value<'_> {
+//     type Output = Self;
+//     fn mul(self, rhs: Self) -> Self::Output {
+//         Value::new(
+//             self.data * rhs.data,   // data
+//             Some(Operations::Mul(Box::new((self, rhs)))))  // operation
+//     }
+// }
 
 
 
