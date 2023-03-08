@@ -1,201 +1,420 @@
-use std::ops::{Add, Mul, Sub};
-use autograd as ag;
+use std::{ops::{Add, Mul}, fmt::Display};
 
-#[derive(PartialEq, Debug)]
-struct Value<'val> {
-    data: i32,
-    grad: i32,
-    _op: Option<Operations<'val>>
+#[derive(PartialEq, Debug, Copy, Clone)]
+pub struct Value {
+    pub data: f64,
+    pub grad: f64,
+}
+
+impl Value {
+    pub fn new(data: f64) -> Value {
+        Value { data, grad:0.0 }
+    }
+    fn resolve(&self) -> f64 {
+        self.data
+    }
 }
 
 #[derive(PartialEq, Debug)]
-enum Operations<'val> {
-    Add(Box<(&'val mut Value<'val>, &'val mut Value<'val>)>),
-    // Sub(Box<(Value<'a>,Value<'a>)>),
-    // Mul(Box<(Value<'a>, Value<'a>)>),
-    // Pow(Box<&'a mut Value<'a>>,u32)
+pub struct Node {
+    op: NodeOp,
+    label: String
 }
 
-impl Operations<'_> {
-    fn _backward (&mut self, out_grad: i32) {
+#[derive(PartialEq, Debug)]
+pub enum NodeOp {
+    Add(Box<(NodeChild,NodeChild)>),
+    Mul(Box<(NodeChild,NodeChild)>),
+}
+
+#[derive(PartialEq, Debug)]
+pub enum NodeChild {
+    Node(Node),
+    Leaf(Value)
+}
+
+impl NodeChild {
+    fn resolve(&self) -> f64 {
         match self {
-            Operations::Add(bxd_tup) => {
-                let (val1, val2) = *(*bxd_tup);
-                val1.grad += out_grad;
-                val2.grad += out_grad;
+            NodeChild::Leaf(value) => value.resolve(),
+            NodeChild::Node(node) => node.resolve()
+        }
+    }
+}
 
-                val1.backward();
-                val2.backward();
+
+impl Node {
+    pub fn new(op:NodeOp,label:String) -> Node {
+        Node { op, label }
+    }
+
+    pub fn stringify(&self) -> String {
+        // let mut res = String::from("\n     ");
+        // res += &self.label;
+        // res += "\n   /    \\ \n";
+        let mut res = String::from("\n");
+
+        match &self.op {
+            NodeOp::Add(bxd_children) | NodeOp::Mul(bxd_children) => {
+                let (l_ch,r_ch) = &*(*bxd_children);
+
+                match l_ch {
+                    NodeChild::Leaf(l_val) => {
+                        match r_ch {
+                            NodeChild::Leaf(r_val) => {
+                                // both leaf
+                                res += "     ";
+                                res += &self.label;
+                                res += "\n   /   \\ \n";
+                                res += &l_val.data.to_string();
+                                res += "[";
+                                res += &l_val.grad.to_string();
+                                res += "]";
+                                res += "   ";
+                                res += &r_val.data.to_string();
+                                res += "[";
+                                res += &r_val.grad.to_string();
+                                res += "]";
+                            },
+                            NodeChild::Node(r_node) => {
+                                // l leaf, r node
+                                res += "     ";
+                                res += &self.label;
+                                res += "\n   /   \\ \n";
+                                res += &l_val.data.to_string();
+                                res += "[";
+                                res += &l_val.grad.to_string();
+                                res += "]\n";
+                                res += &r_node.stringify();
+
+                            }
+                        }
+                    },
+                    NodeChild::Node(l_node) => {
+                        match r_ch {
+                            NodeChild::Leaf(r_val) => {
+                                // l node, r leaf
+                                res += "     ";
+                                res += &self.label;
+                                res += "\n   /   \\ \n        ";
+                                res += &r_val.data.to_string();
+                                res += "[";
+                                res += &r_val.grad.to_string();
+                                res += "]\n";
+                                res += &l_node.stringify();
+                            },
+                            NodeChild::Node(r_node) => {
+                                // both node
+                                res += "     ";
+                                res += &self.label;
+                                res += "\n   /   \\ \n";
+                                res += &l_node.stringify();
+                                res += "\n";
+                                res += &r_node.stringify();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        res
+    }
+
+    pub fn resolve(&self) -> f64 {
+        // extract l,r child values regardless of operation
+        let (l,r) = match &self.op {
+            NodeOp::Add(bxd_children) | NodeOp::Mul(bxd_children) => {
+                let (l_ch,r_ch) = &*(*bxd_children);
+                // handle left child
+                let l_val = match l_ch {
+                    NodeChild::Leaf(value) => {
+                        value.data
+                    },
+                    NodeChild::Node(node) => {
+                        node.resolve()
+                    }
+                };
+
+                // handle right child
+                let r_val = match r_ch {
+                    NodeChild::Leaf(value) => {
+                        value.data
+                    },
+                    NodeChild::Node(node) => {
+                        node.resolve()
+                    }
+                };
+
+                (l_val,r_val)
             },
-            // Operations::Sub(bxd_tup) => {
+        };
 
-            // },
-            // Operations::Mul(bxd_tup) => {
-            //     let (val1, val2) = &mut *(*bxd_tup);
-            //     val1.grad += val2.data * out_grad;
-            //     val2.grad += val1.data * out_grad;
-
-            //     val1.backward();
-            //     val2.backward();
-            // },
-            // Operations::Pow(bxd_val, exp) => {
-            //     let val = &mut *(*bxd_val);
-            //     val.grad += (*exp as i32 * val.data.pow(*exp-1_u32)) * out_grad;
-            // }
+        // operation specific resolution on l,r
+        match &self.op {
+            NodeOp::Add(_) => l + r,
+            NodeOp::Mul(_) => l * r
         }
+    }
+
+    // ONLY ROBUST TO UNBRANCHED TREES
+    pub fn backward(&mut self, out_grad: f64) -> Vec<Value> {
+        // calls _backward recursively (working down the tree)
+        // and then calls _get_leaves() to return vec of leaves in
+        // order of math operations
+        // d * ( a + b ) + c => [d',a',b',c']
+        // where ' means grad
+        self._backward(out_grad);
+        let leaf_vec = Vec::new();
+        self._get_leaves(leaf_vec)
+    }
+    fn _get_leaves(&self, mut leaf_vec:Vec<Value>) -> Vec<Value> {
+        // order of maths operation
+        match &self.op {
+            NodeOp::Add(bxd_children) | NodeOp::Mul(bxd_children) => {
+                let (l_ch,r_ch) = &*(*bxd_children);
+                // handle left child
+                match l_ch {
+                    NodeChild::Leaf(value) => {
+                        leaf_vec.push(value.clone());
+                    },
+                    NodeChild::Node(node) => {
+                        leaf_vec = node._get_leaves(leaf_vec);
+                    }
+                };
+
+                // handle right child
+                match r_ch {
+                    NodeChild::Leaf(value) => {
+                        leaf_vec.push(value.clone());
+                    },
+                    NodeChild::Node(node) => {
+                        leaf_vec = node._get_leaves(leaf_vec);
+                    }
+                };
+            }
+        };
+        leaf_vec
+    }
+    fn _backward(&mut self, out_grad: f64) {
+        match &mut self.op {
+            NodeOp::Add(bxd_children) => {
+                let (l_ch,r_ch) = &mut*(*bxd_children);
+                match l_ch {
+                    NodeChild::Leaf(value) => value.grad = out_grad,
+                    NodeChild::Node(node) => node._backward(out_grad)
+                };
+                match r_ch {
+                    NodeChild::Leaf(value) => value.grad = out_grad,
+                    NodeChild::Node(node) => node._backward(out_grad)
+                }
+            },
+            NodeOp::Mul(bxd_children) => {
+                let (l_ch,r_ch) = &mut*(*bxd_children);
+                match l_ch {
+                    NodeChild::Leaf(value) => value.grad = r_ch.resolve() * out_grad,
+                    NodeChild::Node(node) => node._backward(r_ch.resolve() * out_grad)
+                };
+                match r_ch {
+                    NodeChild::Leaf(value) => value.grad = l_ch.resolve() * out_grad,
+                    NodeChild::Node(node) => node._backward(l_ch.resolve() * out_grad)
+                };
+            }
+        };
     }
 }
 
-impl Value<'_> {
-    fn new(data: i32, op: Option<Operations>) -> Value {
-        Value { data, grad: 0, _op:op }
-    }
-
-    // fn pow(mut self, exp: u32) -> Self {
-    //     Value::new(self.data.pow(exp),
-    //                 Some(Operations::Pow(Box::new(&mut self),exp)))
+// impl Node {
+    // pub fn backward(&self, out_grad: f64) -> (Value,Value) {
+    //     match self {
+    //         Node::Add((l,r)) => {
+    //             (Value {data:*l, grad:Some(out_grad)},
+    //                 Value {data:*r, grad:Some(out_grad)})
+    //         },
+    //         Node::Mul((l,r)) => {
+    //             (Value {data:*l, grad: Some(r * out_grad)},
+    //                 Value {data:*r, grad: Some(l * out_grad)})
+    //         }
+    //     }
     // }
-
-    fn backward(&mut self) {
-        if let Some(ref mut op) = self._op {
-            op._backward(self.grad);
-        }
-    }
-
-}
-
-// impl Clone for Value {
-//     fn clone(&self) -> Self {
-//         let mut prev: Option<Box<(Value,Value)>> = None;
-//         if let Some(boxed_tuple) = &self._prev {
-//             prev = Some(Box::new(*boxed_tuple.clone()));
-//         }
-//         if let Some(op) = &self._op {
-//            Value { data: self.data, grad: self.grad, _prev: prev, _op: Some(*op) } 
-//         } else {
-//             Value { data: self.data, grad: self.grad, _prev: prev, _op: None } 
-//         }
-        
-//     }
 // }
 
-impl<'a,'b,'c,'d> Add<&'d mut Value<'c>> for &'b mut Value<'a> {
-    type Output = Value<'a>;
+
+
+
+// assume you can only do operations between Value objects or Nodes (not plain floats)
+// every Value used in an operation becomes a leaf and will have a grad returned following
+// a call to backward.
+impl Add for &Value {
+    type Output = Node;
     fn add(self, rhs: Self) -> Self::Output {
-        Value::new(
-            self.data + rhs.data,   // data
-            Some(Operations::Add(Box::new((self, rhs)))))  // operation
+        Node::new(
+            NodeOp::Add(
+                Box::new(
+                    (
+                        NodeChild::Leaf(Value::new(self.data)),
+                        NodeChild::Leaf(Value::new(rhs.data))
+                    )
+                )
+            ),
+            String::from("+")
+        )
     }
 }
 
-// impl Sub for Value<'_> {
-//     type Output = Self;
-//     fn sub(self, rhs: Self) -> Self::Output {
-//         Value::new(
-//             self.data - rhs.data,   // data
-//             Some(Operations::Sub(Box::new((self,rhs)))))  // operation
-//     }
-// }
+// add node to leaf
+impl Add<Node> for &Value {
+    type Output = Node;
+    fn add(self, rhs: Node) -> Self::Output {
+        Node::new(
+            NodeOp::Add(
+                Box::new(
+                    (
+                        NodeChild::Leaf(Value::new(self.data)),
+                        NodeChild::Node(rhs),
+                    )
+                )
+            ),
+            String::from("+")
+        )
+    }
+}
 
-// impl Mul for Value<'_> {
-//     type Output = Self;
-//     fn mul(self, rhs: Self) -> Self::Output {
-//         Value::new(
-//             self.data * rhs.data,   // data
-//             Some(Operations::Mul(Box::new((self, rhs)))))  // operation
-//     }
-// }
+// add leaf to node
+impl Add<&Value> for Node {
+    type Output = Node;
+    fn add(self, rhs: &Value) -> Self::Output {
+        Node::new(
+            NodeOp::Add(
+                Box::new(
+                    (
+                        NodeChild::Node(self),
+                        NodeChild::Leaf(Value::new(rhs.data))
+                    )
+                )
+            ),
+            String::from("+")
+        )
+    }
+}
+
+impl Add for Node {
+    type Output = Node;
+    fn add(self, rhs: Node) -> Self::Output {
+        Node::new(
+            NodeOp::Add(
+                Box::new(
+                    (
+                        NodeChild::Node(self),
+                        NodeChild::Node(rhs)
+                    )
+                )
+            ),
+            String::from("+")
+        )
+    }
+}
+
+impl Mul for &Value {
+    type Output = Node;
+    fn mul(self, rhs: Self) -> Self::Output {
+        Node::new(
+            NodeOp::Mul(
+                Box::new(
+                    (
+                        NodeChild::Leaf(Value::new(self.data)),
+                        NodeChild::Leaf(Value::new(rhs.data))
+                    )
+                )),
+             String::from("*")
+        )
+    }
+}
+// mul val by node
+impl Mul<Node> for &Value {
+    type Output = Node;
+    fn mul(self, rhs: Node) -> Self::Output {
+        Node::new(
+            NodeOp::Mul(
+                Box::new(
+                    (
+                        NodeChild::Leaf(Value::new(self.data)),
+                        NodeChild::Node(rhs)
+                        
+                    )
+                )
+            ),
+            String::from("*")
+        )
+    }
+}
+
+// mul node by val
+impl Mul<&Value> for Node {
+    type Output = Node;
+    fn mul(self, rhs: &Value) -> Self::Output {
+        Node::new(
+            NodeOp::Mul(
+                Box::new(
+                    (
+                        NodeChild::Node(self),
+                        NodeChild::Leaf(Value::new(rhs.data))
+                    )
+                )
+            ),
+            String::from("*")
+        )
+    }
+}
+
+impl Mul for Node {
+    type Output = Node;
+    fn mul(self, rhs: Self) -> Self::Output {
+        Node::new(
+            NodeOp::Mul(
+                Box::new(
+                    (
+                        NodeChild::Node(self),
+                        NodeChild::Node(rhs)
+                    )
+                )
+            ),
+            String::from("*")
+        )
+    }
+}
 
 
+impl Display for Node {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.stringify())
+    }
+}
 
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    // #[test]
-    // fn add_overflow() {
-    //     let val1 = Value::new(3_i32, None);
-    //     let val2 = Value::new(5_i32, None);
-    //     assert_eq!(val1.clone() + val2.clone(), Value { data: 8_i32,
-    //                                     grad: 0_i32,
-    //                                     _op: Some(Operations::Add(Box::new((val1,val2))))
-    //                                 })
-    // }
-    // #[test]
-    // fn sub_overflow() {
-    //     let val1 = Value::new(3_i32, None);
-    //     let val2 = Value::new(5_i32, None);
-    //     assert_eq!(val1.clone() - val2.clone(), Value { data: -2_i32,
-    //                                     grad: 0_i32,
-    //                                     _op: Some(Operations::Sub(Box::new((val1,val2))))
-    //                                 })
-    // }
-    // #[test]
-    // fn mull_overflow() {
-    //     let val1 = Value::new(3_i32, None);
-    //     let val2 = Value::new(5_i32, None);
-    //     assert_eq!(val1.clone() * val2.clone(), Value { data: 15_i32,
-    //                                     grad: 0_i32,
-    //                                     _op: Some(Operations::Mul(Box::new((val1,val2))))
-    //                                 })
-    // }
-    // #[test]
-    // fn pow() {
-    //     let val1 = Value::new(3_i32, None);
-    //     // let val2 = Value::new(5_i32, None, None);
-    //     assert_eq!(val1.clone().pow(2_u32), Value { data: 9_i32,
-    //                                     grad: 0_i32,
-    //                                     _op: Some(Operations::Pow(Box::new(val1),2_u32))
-    //                                 })
-    // }
-
     #[test]
-    fn backward() {
-        let a = Value::new(2, None);
-        let b = Value::new(3, None);
-        let c = Value::new(4, None);
-        let mut y = (a + b) * c;
-        y.grad = 2;
-        y.backward();
-        
-        let new_a = Value { data: 2, grad: 8, _op: None};
-        let new_b = Value { data: 3, grad: 8, _op: None};
-        let new_a_b = Value { data: 5, grad: 8, _op: Some(Operations::Add(Box::new((&mut new_a, &mut new_b))))};
-        let new_c = Value { data: 4, grad: 10, _op: None};
-        assert_eq!(y, Value { data: 20, grad: 2, _op: Some(Operations::Mul(Box::new((new_a_b,new_c))))});
+    fn build_and_resolve_graph() {
+        let graph = &Value::new(4.0) + (&Value::new(2.0) * &Value::new(3.0) + &Value::new(4.0)) * &Value::new(5.0) + &Value::new(7.0);
+        println!("\n-------------------------------------\n Printing graph for 4 + (2 + 3) * 5 + 7");
+        println!("{graph}\n-------------------------------------\n");
+        assert_eq!(graph.resolve(),61.0);
     }
 
     #[test]
-    fn test_against_autograd() {
-        let x = Value::new(2, None);
-        let y = Value::new(3, None);
-        // let c = Value::new(4, None);
-
-        let mut z = Value::new(2,None) * x.pow(2) + Value::new(3,None)*y + Value::new(1,None);
-        z.backward();
-
-        println!("{:?}",y);
-        println!("{:?}",x);
-        println!("{:?}",z);
-
-        ag::with(|g: &mut ag::Graph<_>| {
-            let x = g.placeholder(&[]);
-            let y = g.placeholder(&[]);
-            let z = 2.*x*x + 3.*y + 1.;
-        
-            // dz/dy
-            let gy = &g.grad(&[z], &[y])[0];
-            println!("{:?}", gy.eval(&[]));   // => Ok(3.)
-        
-            // dz/dx (requires to fill the placeholder `x`)
-            let gx = &g.grad(&[z], &[x])[0];
-            let feed = ag::ndarray::arr0(2.);
-            println!("{:?}", gx.eval(&[x.given(feed.view())]));  // => Ok(8.)
-            // ddz/dx (differentiates `z` again)
-            let ggx = &g.grad(&[gx], &[x])[0];
-            println!("{:?}", ggx.eval(&[]));  // => Ok(4.)
-        });
-
+    fn backward() {
+        let mut graph = &Value::new(4.0) + (&Value::new(2.0) * &Value::new(3.0) + &Value::new(4.0))  * &Value::new(5.0) + &Value::new(7.0);
+        let leaves = graph.backward(1.0);
+        println!("\n-------------------------------------\n visualise after backward()");
+        println!("{graph}\n-------------------------------------\n");
+        assert_eq!(leaves,vec![
+            Value { data: 4.0, grad: 1.0},
+            Value { data: 2.0, grad: 15.0},
+            Value { data: 3.0, grad: 10.0},
+            Value { data: 4.0, grad: 5.0},
+            Value { data: 5.0, grad: 10.0},
+            Value { data: 7.0, grad: 1.0},])
     }
 }
