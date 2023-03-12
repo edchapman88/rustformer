@@ -1,5 +1,7 @@
+
 use micrograd::{ Value,Node };
 use rand::{ thread_rng, Rng };
+use crate::serial::{Layer,LayerError};
 
 pub struct DenseLayer {
     pub i_size: usize,
@@ -10,34 +12,8 @@ pub struct DenseLayer {
     pub input_grad: Vec<f64>
 }
 
-#[derive(Debug)]
-pub enum LayerError {
-    MissingTree(String)
-}
-
-impl DenseLayer {
-    pub fn new(input_size:usize, output_size:usize) -> DenseLayer {
-        let mut rng = thread_rng();
-        let mut w:Vec<Value> = Vec::with_capacity(input_size * output_size);
-        let mut tree:Vec<Option<Node>> = Vec::with_capacity(input_size * output_size);
-        let mut b = Vec::with_capacity(output_size);
-        for _ in 0..(input_size * output_size) {
-            w.push(Value::new(rng.gen()));
-        }
-        for _ in 0..output_size {
-            b.push(Value::new(rng.gen()));
-            tree.push(None);
-        }
-        DenseLayer {
-            i_size: input_size,
-            o_size: output_size,
-            w,
-            b,
-            tree,
-            input_grad: vec![0.0; input_size]
-        }
-    }
-    pub fn forward(&mut self, x: Vec<f64>) -> Vec<f64> {
+impl Layer for DenseLayer {
+    fn forward(&mut self, x: Vec<f64>) -> Vec<f64> {
         // generate a tree from the forward pass and assign to layer.tree
         // take a reference to the tree and resolve to a returned value
         let mut res = Vec::new();
@@ -59,7 +35,7 @@ impl DenseLayer {
         }
         res
     }
-    pub fn backward(&mut self, out_grad:Vec<f64>) -> Result<(),LayerError> {
+    fn backward(&mut self, out_grad:Vec<f64>) -> Result<(),LayerError> {
         // if there is a tree, call backward on the tree
         // mutate the data in the layer with the grads returned from backward
         for o in 0..self.o_size {
@@ -75,6 +51,49 @@ impl DenseLayer {
             }
         }
         Ok(())
+    }
+    fn update(&mut self, l_rate: f64) {
+        for mut wi in self.w.iter_mut() {
+            wi.data -= l_rate * wi.grad;
+        }
+        for mut bi in self.b.iter_mut() {
+            bi.data -= l_rate * bi.grad;
+        }
+    }
+    fn zero_grad(&mut self) {
+        for mut wi in self.w.iter_mut() {
+            wi.grad = 0.0;
+        }
+        for mut bi in self.b.iter_mut() {
+            bi.grad = 0.0;
+        }
+    }
+    fn get_input_grad(&self) -> &[f64] {
+        self.input_grad.as_slice()
+    }
+}
+
+impl DenseLayer {
+    pub fn new(input_size:usize, output_size:usize) -> DenseLayer {
+        let mut rng = thread_rng();
+        let mut w:Vec<Value> = Vec::with_capacity(input_size * output_size);
+        let mut tree:Vec<Option<Node>> = Vec::with_capacity(input_size * output_size);
+        let mut b = Vec::with_capacity(output_size);
+        for _ in 0..(input_size * output_size) {
+            w.push(Value::new(rng.gen()));
+        }
+        for _ in 0..output_size {
+            b.push(Value::new(0.0));
+            tree.push(None);
+        }
+        DenseLayer {
+            i_size: input_size,
+            o_size: output_size,
+            w,
+            b,
+            tree,
+            input_grad: vec![0.0; input_size]
+        }
     }
 }
 
