@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 micrograd = { path = "../micrograd" }
 rand = "0.8.5"
+statrs = "0.16.0"

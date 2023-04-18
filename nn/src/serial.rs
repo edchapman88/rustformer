@@ -10,7 +10,8 @@ pub trait Layer {
 #[derive(Debug)]
 pub enum LayerError {
     MissingTree(String),
-    MissingReluInputs(String)
+    MissingActivationOutputs(String),
+    MissingActivationInputs(String)
 }
 
 pub struct Serial {

@@ -17,7 +17,7 @@ impl Layer for ReluLayer {
     fn backward(&mut self, out_grad: Vec<f64>) -> Result<(), LayerError> {
         let mut input_grad = Vec::new();
         if self.x.len() == 0 {
-            return Err(LayerError::MissingReluInputs(String::from("
+            return Err(LayerError::MissingActivationInputs(String::from("
             Either missing a previous call to forward(), or the layer input has zero length")))
         }
         for (i,el) in self.x.iter().enumerate() {

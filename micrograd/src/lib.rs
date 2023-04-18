@@ -391,6 +391,7 @@ impl Display for Node {
 }
 
 
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -398,7 +399,7 @@ mod tests {
     #[test]
     fn build_and_resolve_graph() {
         let graph = &Value::new(4.0) + (&Value::new(2.0) * &Value::new(3.0) + &Value::new(4.0)) * &Value::new(5.0) + &Value::new(7.0);
-        println!("\n-------------------------------------\n Printing graph for 4 + (2 + 3) * 5 + 7");
+        println!("\n-------------------------------------\n Printing graph for 4 + (2 * 3 + 4) * 5 + 7");
         println!("{graph}\n-------------------------------------\n");
         assert_eq!(graph.resolve(),61.0);
     }
@@ -408,7 +409,12 @@ mod tests {
         let mut graph = &Value::new(4.0) + (&Value::new(2.0) * &Value::new(3.0) + &Value::new(4.0))  * &Value::new(5.0) + &Value::new(7.0);
         let leaves = graph.backward(1.0);
         println!("\n-------------------------------------\n visualise after backward()");
-        println!("{graph}\n-------------------------------------\n");
+        println!("{graph}\n");
+        println!("the leaves are returned by .backward(), in the order in which the maths operations were called\n");
+        println!("note, this is not the order in which the operations are carried out w.r.t the priority ordering of operations in mathematics\n");
+        println!("the calling order was: 4 + (2 * 3 + 4) * 5 + 7\n");
+        println!("{:?}\n-------------------------------------\n",leaves);
+        
         assert_eq!(leaves,vec![
             Value { data: 4.0, grad: 1.0},
             Value { data: 2.0, grad: 15.0},

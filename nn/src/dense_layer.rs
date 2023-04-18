@@ -1,6 +1,8 @@
 
+
 use micrograd::{ Value,Node };
-use rand::{ thread_rng, Rng };
+use rand::{ thread_rng, Rng, distributions::Distribution };
+use statrs::distribution::Normal;
 use crate::serial::{Layer,LayerError};
 
 pub struct DenseLayer {
@@ -67,6 +69,7 @@ impl Layer for DenseLayer {
         for mut bi in self.b.iter_mut() {
             bi.grad = 0.0;
         }
+        self.input_grad = vec![0.0; self.i_size];
     }
     fn get_input_grad(&self) -> &[f64] {
         self.input_grad.as_slice()
@@ -76,11 +79,12 @@ impl Layer for DenseLayer {
 impl DenseLayer {
     pub fn new(input_size:usize, output_size:usize) -> DenseLayer {
         let mut rng = thread_rng();
+        let norm = Normal::new(0.0, (2.0/(input_size as f64)).sqrt()).unwrap();
         let mut w:Vec<Value> = Vec::with_capacity(input_size * output_size);
         let mut tree:Vec<Option<Node>> = Vec::with_capacity(input_size * output_size);
         let mut b = Vec::with_capacity(output_size);
         for _ in 0..(input_size * output_size) {
-            w.push(Value::new(rng.gen()));
+            w.push(Value::new(norm.sample(&mut rng)));
         }
         for _ in 0..output_size {
             b.push(Value::new(0.0));
@@ -112,7 +116,9 @@ mod tests {
                             (layer.w[4].data * 2.0) + (layer.w[5].data * 3.0) + layer.b[2].data,]);
 
         if let Some(ref t) = layer.tree[0] {
-            println!("{}",t)
+            println!("\n-------------------------------------\n Printing graph for first element in dense_layer output");
+            println!("\n y0 = x0 * w00 + x1 * w01 + b0");
+            println!("{t}\n-------------------------------------\n");
         }
         
         layer.backward(vec![1.0,2.0,3.0]).expect("tree should be set by call to foreward");
