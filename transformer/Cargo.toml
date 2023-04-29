@@ -7,3 +7,5 @@ edition = "2021"
 
 [dependencies]
 nn = { path = "../nn" }
+matrix_library = { path = "../../matrix_library" }
+rand = "0.8.5"

@@ -7,3 +7,5 @@ edition = "2021"
 
 [dependencies]
 transformer = { path = "../transformer" }
+nn = { path = "../nn" }
+rand = "0.8.5"
