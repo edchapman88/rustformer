@@ -39,7 +39,7 @@ impl Transformer {
     }
 
     // input x: (B,T) where each element is a usize vocab index
-    pub fn forward(&mut self, x:&Vec<Vec<usize>>) -> Vec<Vec<Vec<f64>>> {
+    pub fn forward(&mut self, x:&Vec<Vec<usize>>, y:Option<&Vec<Vec<usize>>>) -> (Vec<Vec<Vec<f64>>>,Option<f64>) {
         let emb_batch = self.token_emb.get_emb(&x); // (B,T,C)
         // emb_batch += self.pos_emb.get_emb(&x); // TODO: elemwise add (B,TC) + (B,T,C)
         let mut batch_out:Vec<Vec<Vec<f64>>> = Vec::new();
@@ -68,7 +68,13 @@ impl Transformer {
             // rebuild batch of independent items
             batch_out.push(batch_item);  // (B,T,vocab_size)
         }
-        batch_out
+        if let Some(targets) = y {
+            let loss = 5.0;
+            
+            (batch_out,Some(loss))
+        } else {
+            (batch_out,None)
+        }
     }
 
     pub fn generate(&mut self, mut idx: Vec<usize>, n_new_tokens:usize) -> Vec<usize> {
@@ -80,7 +86,7 @@ impl Transformer {
                 ctx_block = &idx[idx.len()-self.block_size..idx.len()];
             }
             // insert batch dimension to match expected shape
-            let mut logits = self.forward(&vec![ctx_block.to_vec()]); // ( 1, len(ctx_block), vocab_size )
+            let (logits,_) = self.forward(&vec![ctx_block.to_vec()], None); // ( 1, len(ctx_block), vocab_size )
             // take logits from final position in the ctx_block dimension - that will be
             // the next token prediction given all of the context provided
             let new_token_logits = logits[0][logits[0].len()-1].to_owned();
