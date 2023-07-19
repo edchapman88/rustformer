@@ -49,7 +49,7 @@ fn main() {
         batch_size: usize,
         block_size: usize,
     ) -> (Vec<Vec<usize>>, Vec<Vec<usize>>) {
-        // each x sample in the batch contains block_size (eg = 4) items eg. [x1,x2,x3,x4]
+        // each x sample in the batch contains block_size (eg. = 4) items eg. [x1,x2,x3,x4]
         // and that sample contains 4 training samples or different length,
         // each corresponding to the 4 y samples returned with it:
         // x1 -> y1(=x2)
@@ -70,33 +70,37 @@ fn main() {
 
     // println!("{:?}", chars);
 
-    // let (x_batch, y_batch) = get_batch(charidxs, batch_size, block_size);
+    let (x_batch, y_batch) = get_batch(charidxs, batch_size, block_size);
     // println!("x = {:?}", x_batch);
     // println!("y = {:?}", y_batch);
 
     let mut transformer =
         Transformer::new(vocab_size, n_embd, block_size, n_layers, n_heads, head_size);
 
-    // let (logits_batch, loss) = transformer.forward(&x_batch, Some(&y_batch)); // (B,T,vocab_size)
-    // println!(
-    //     "shape of logits: {:?}",
-    //     (
-    //         logits_batch.len(),
-    //         logits_batch[0].len(),
-    //         logits_batch[0][0].len()
-    //     )
-    // );
+    let (logits_batch, loss) = transformer.forward(&x_batch, Some(&y_batch)); // (B,T,vocab_size)
+    println!(
+        "shape of logits: {:?}",
+        (
+            logits_batch.len(),
+            logits_batch[0].len(),
+            logits_batch[0][0].len()
+        )
+    );
+    if let Some(l) = loss {
+        // println!("{l}");
+        println!("{:?}", l.resolve());
+    }
 
     // // drop batch paralleilisation
     // for (logits, y) in logits_batch.iter().zip(y_batch.iter()) {
     //     let probs = nn::utils::softmax(&logits, 1); // (T,vocab_size)
     // }
 
-    let new_idxs = transformer.generate([0].to_vec(), 100);
+    // let new_idxs = transformer.generate([0].to_vec(), 100);
 
-    let mut x_str = String::new();
-    for idx in new_idxs {
-        x_str.push(itochar.get(&idx).unwrap().to_owned());
-    }
-    println!("{}", x_str);
+    // let mut x_str = String::new();
+    // for idx in new_idxs {
+    //     x_str.push(itochar.get(&idx).unwrap().to_owned());
+    // }
+    // println!("{}", x_str);
 }

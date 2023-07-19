@@ -53,6 +53,13 @@ impl Node {
         Node { op, label }
     }
 
+    pub fn placeHolder() -> Node {
+        Node {
+            op: NodeOp::Ln(Box::new(NodeChild::Leaf(Value::new(0.0)))),
+            label: String::from("dummy"),
+        }
+    }
+
     pub fn stringify(&self) -> String {
         // let mut res = String::from("\n     ");
         // res += &self.label;
@@ -466,6 +473,24 @@ impl Mul for Node {
         Node::new(
             NodeOp::Mul(Box::new((NodeChild::Node(self), NodeChild::Node(rhs)))),
             String::from("*"),
+        )
+    }
+}
+
+impl Value {
+    pub fn pow_val(self, e: &Value) -> Node {
+        Node::new(
+            NodeOp::Pow(Box::new((
+                NodeChild::Leaf(self),
+                NodeChild::Leaf(e.clone()),
+            ))),
+            String::from("^"),
+        )
+    }
+    pub fn pow_node(self, e: Node) -> Node {
+        Node::new(
+            NodeOp::Pow(Box::new((NodeChild::Leaf(self), NodeChild::Node(e)))),
+            String::from("^"),
         )
     }
 }
