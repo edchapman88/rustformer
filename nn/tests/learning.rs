@@ -1,3 +1,4 @@
+use micrograd::{Node, Value};
 use nn::{
     dense_layer::DenseLayer, optim::OptimSGD, relu_layer::ReluLayer, serial,
     sigmoid_layer::SigmoidLayer,
@@ -56,10 +57,17 @@ fn model_learning() {
 
         let (xi, yi) = xor[itr % 4];
         let y_pred = model.forward(&xi.to_vec());
-        let e = bce(yi.to_vec()[0], y_pred[0]);
-        e_log += &e.to_string();
+        // final dense layer of model has output dimension of 1
+        // so sigmoid input and output dimension is 1
+        // println!("{:?}", y_pred);
+        let mut e = bce(yi.to_vec()[0], y_pred[0]);
+        e_log += &e.resolve().to_string();
         e_log += "\n";
-        let e_grad = vec![bce_prime(yi.to_vec()[0], y_pred[0])];
+
+        let op_leaves = e.backward(1.0);
+        assert_eq!(op_leaves[2].data, y_pred[0]);
+        assert_eq!(op_leaves[7].data, y_pred[0]);
+        let e_grad = vec![op_leaves[2].grad + op_leaves[7].grad];
 
         model.zero_grad();
         model.backward(e_grad).unwrap();
@@ -72,15 +80,17 @@ fn model_learning() {
     }
 }
 
-fn bce(y: f64, y_pred: f64) -> f64 {
-    -(y * (y_pred + 0.0001).ln() + (1.0 - y) * (1.0 - (y_pred - 0.0001)).ln())
-}
-
-fn bce_prime(y: f64, y_pred: f64) -> f64 {
-    -((y / (y_pred + 0.0001)) + (y - 1.0) / (1.0 - (y_pred - 0.0001)))
+fn bce(y_float: f64, y_pred_float: f64) -> Node {
+    // -1 * [ y * (y_pred + 0.0001).ln()    +    (1 - y) * (1 - (y_pred - 0.0001)).ln() ]
+    let y_pred = Value::new(y_pred_float);
+    let y = Value::new(y_float);
+    &Value::new(-1.0)
+        * (&y * (&y_pred + &Value::new(0.0001)).ln()
+            + (&Value::new(1.0) - &y) * (&Value::new(1.0) - (&y_pred - &Value::new(0.0001))).ln())
 }
 
 fn binary_x_entropy(y: &Vec<Vec<f64>>, y_pred: &Vec<Vec<f64>>) -> Vec<f64> {
+    // TODO: refactor to be auto-differentiable (see bce)
     let batch_size = y.len();
     let y_len = y[0].len();
     let mut mean_loss = vec![0.0; y[0].len()];
@@ -94,36 +104,4 @@ fn binary_x_entropy(y: &Vec<Vec<f64>>, y_pred: &Vec<Vec<f64>>) -> Vec<f64> {
         *el /= -1.0 * batch_size as f64;
     }
     mean_loss
-}
-
-fn binary_x_entropy_prime(y: &Vec<Vec<f64>>, y_pred: &Vec<Vec<f64>>) -> Vec<f64> {
-    let batch_size = y.len();
-    let y_len = y[0].len();
-    let mut mean_loss_prime = vec![0.0; y[0].len()];
-    for s in 0..batch_size {
-        for i in 0..y_len {
-            mean_loss_prime[i] += y_pred[s][i] - y[s][i];
-        }
-        // grad.push(-((y[i]/y_pred[i]) + (y[i] - 1.0)/(1.0 - y_pred[i])));
-    }
-    for el in &mut mean_loss_prime {
-        *el /= batch_size as f64;
-    }
-    mean_loss_prime
-}
-
-fn mse(y: &Vec<f64>, y_pred: &Vec<f64>) -> f64 {
-    let mut sum = 0.0;
-    for i in 0..y.len() {
-        sum += (y[i] - y_pred[i]).powi(2);
-    }
-    sum / y.len() as f64
-}
-
-fn mse_prime(y: &Vec<f64>, y_pred: &Vec<f64>) -> Vec<f64> {
-    let mut grad = Vec::new();
-    for i in 0..y.len() {
-        grad.push((y_pred[i] - y[i]) * 2.0 / y.len() as f64);
-    }
-    grad
 }

@@ -1,6 +1,6 @@
 use std::{
     fmt::Display,
-    ops::{Add, Mul},
+    ops::{Add, Mul, Sub},
 };
 
 #[derive(PartialEq, Debug, Copy, Clone)]
@@ -27,8 +27,10 @@ pub struct Node {
 #[derive(PartialEq, Debug, Clone)]
 pub enum NodeOp {
     Add(Box<(NodeChild, NodeChild)>),
+    Sub(Box<(NodeChild, NodeChild)>),
     Mul(Box<(NodeChild, NodeChild)>),
     Pow(Box<(NodeChild, NodeChild)>),
+    Ln(Box<NodeChild>),
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -58,7 +60,10 @@ impl Node {
         let mut res = String::from("\n");
 
         match &self.op {
-            NodeOp::Add(bxd_children) | NodeOp::Mul(bxd_children) | NodeOp::Pow(bxd_children) => {
+            NodeOp::Add(bxd_children)
+            | NodeOp::Mul(bxd_children)
+            | NodeOp::Pow(bxd_children)
+            | NodeOp::Sub(bxd_children) => {
                 let (l_ch, r_ch) = &*(*bxd_children);
 
                 match l_ch {
@@ -118,6 +123,18 @@ impl Node {
                     }
                 }
             }
+            NodeOp::Ln(bxd_child) => {
+                let child = &*(*bxd_child);
+                match child {
+                    NodeChild::Leaf(_) => panic!(".ln() not implemented for Value struct"),
+                    NodeChild::Node(node) => {
+                        res += "     ";
+                        res += &self.label;
+                        res += "\n   /\n        ";
+                        res += &node.stringify();
+                    }
+                }
+            }
         }
         res
     }
@@ -125,7 +142,10 @@ impl Node {
     pub fn resolve(&self) -> f64 {
         // extract l,r child values regardless of operation
         let (l, r) = match &self.op {
-            NodeOp::Add(bxd_children) | NodeOp::Mul(bxd_children) | NodeOp::Pow(bxd_children) => {
+            NodeOp::Add(bxd_children)
+            | NodeOp::Mul(bxd_children)
+            | NodeOp::Pow(bxd_children)
+            | NodeOp::Sub(bxd_children) => {
                 let (l_ch, r_ch) = &*(*bxd_children);
                 // handle left child
                 let l_val = match l_ch {
@@ -141,13 +161,23 @@ impl Node {
 
                 (l_val, r_val)
             }
+            NodeOp::Ln(bxd_child) => {
+                let child = &*(*bxd_child);
+                let resolved_child = match child {
+                    NodeChild::Leaf(_) => panic!(".ln() not implemented for Value struct"),
+                    NodeChild::Node(node) => node.resolve(),
+                };
+                return resolved_child.ln();
+            }
         };
 
         // operation specific resolution on l,r
         match &self.op {
             NodeOp::Add(_) => l + r,
+            NodeOp::Sub(_) => l - r,
             NodeOp::Mul(_) => l * r,
             NodeOp::Pow(_) => l.powf(r),
+            NodeOp::Ln(_) => panic!("handled with early return from previous match"),
         }
     }
 
@@ -164,7 +194,10 @@ impl Node {
     fn _get_leaves(&self, mut leaf_vec: Vec<Value>) -> Vec<Value> {
         // order of maths operation
         match &self.op {
-            NodeOp::Add(bxd_children) | NodeOp::Mul(bxd_children) | NodeOp::Pow(bxd_children) => {
+            NodeOp::Add(bxd_children)
+            | NodeOp::Sub(bxd_children)
+            | NodeOp::Mul(bxd_children)
+            | NodeOp::Pow(bxd_children) => {
                 let (l_ch, r_ch) = &*(*bxd_children);
                 // handle left child
                 match l_ch {
@@ -186,6 +219,15 @@ impl Node {
                     }
                 };
             }
+            NodeOp::Ln(bxd_child) => {
+                let child = &*(*bxd_child);
+                match child {
+                    NodeChild::Leaf(_) => panic!(".ln() not implemented for Value struct"),
+                    NodeChild::Node(node) => {
+                        leaf_vec = node._get_leaves(leaf_vec);
+                    }
+                }
+            }
         };
         leaf_vec
     }
@@ -200,6 +242,17 @@ impl Node {
                 match r_ch {
                     NodeChild::Leaf(value) => value.grad = out_grad,
                     NodeChild::Node(node) => node._backward(out_grad),
+                }
+            }
+            NodeOp::Sub(bxd_children) => {
+                let (l_ch, r_ch) = &mut *(*bxd_children);
+                match l_ch {
+                    NodeChild::Leaf(value) => value.grad = out_grad,
+                    NodeChild::Node(node) => node._backward(out_grad),
+                };
+                match r_ch {
+                    NodeChild::Leaf(value) => value.grad = -out_grad,
+                    NodeChild::Node(node) => node._backward(-out_grad),
                 }
             }
             NodeOp::Mul(bxd_children) => {
@@ -234,6 +287,14 @@ impl Node {
                         node._backward(l_val.powf(r_val) * r_val.ln() * out_grad)
                     }
                 };
+            }
+            NodeOp::Ln(bxd_child) => {
+                let child = &mut *(*bxd_child);
+                let child_val = child.resolve();
+                match child {
+                    NodeChild::Leaf(_) => panic!(".ln() not implemented for Value struct"),
+                    NodeChild::Node(node) => node._backward(out_grad / child_val),
+                }
             }
         };
     }
@@ -308,6 +369,57 @@ impl Add for Node {
     }
 }
 
+impl Sub for &Value {
+    type Output = Node;
+    fn sub(self, rhs: Self) -> Self::Output {
+        Node::new(
+            NodeOp::Sub(Box::new((
+                NodeChild::Leaf(Value::new(self.data)),
+                NodeChild::Leaf(Value::new(rhs.data)),
+            ))),
+            String::from("-"),
+        )
+    }
+}
+
+// subtract node from leaf
+impl Sub<Node> for &Value {
+    type Output = Node;
+    fn sub(self, rhs: Node) -> Self::Output {
+        Node::new(
+            NodeOp::Sub(Box::new((
+                NodeChild::Leaf(Value::new(self.data)),
+                NodeChild::Node(rhs),
+            ))),
+            String::from("-"),
+        )
+    }
+}
+
+// subtract leaf from node
+impl Sub<&Value> for Node {
+    type Output = Node;
+    fn sub(self, rhs: &Value) -> Self::Output {
+        Node::new(
+            NodeOp::Sub(Box::new((
+                NodeChild::Node(self),
+                NodeChild::Leaf(Value::new(rhs.data)),
+            ))),
+            String::from("-"),
+        )
+    }
+}
+
+impl Sub for Node {
+    type Output = Node;
+    fn sub(self, rhs: Node) -> Self::Output {
+        Node::new(
+            NodeOp::Sub(Box::new((NodeChild::Node(self), NodeChild::Node(rhs)))),
+            String::from("-"),
+        )
+    }
+}
+
 impl Mul for &Value {
     type Output = Node;
     fn mul(self, rhs: Self) -> Self::Output {
@@ -372,6 +484,12 @@ impl Node {
         Node::new(
             NodeOp::Pow(Box::new((NodeChild::Node(self), NodeChild::Node(e)))),
             String::from("^"),
+        )
+    }
+    pub fn ln(self) -> Node {
+        Node::new(
+            NodeOp::Ln(Box::new(NodeChild::Node(self))),
+            String::from("ln"),
         )
     }
 }
@@ -464,7 +582,7 @@ mod tests {
         // y0 = 1
         let y_pred0 = &Value::new(2.0) * &Value::new(8.0) + &Value::new(4.0);
 
-        let mut graph = (y_pred0.clone() + &Value::new(-1.0)).pow_val(&Value::new(2.0));
+        let mut graph = (y_pred0.clone() - &Value::new(1.0)).pow_val(&Value::new(2.0));
         let leaves = graph.backward(1.0);
         println!("{graph}");
         println!("{:?}", leaves);
@@ -477,5 +595,29 @@ mod tests {
 
         assert_eq!(leaves[1].grad, 76.0);
         assert_eq!(leaves[2].grad, 38.0);
+    }
+
+    #[test]
+    fn bin_x_entropy_calc() {
+        // -1 * [ y * (y_pred + 0.0001).ln()    +    (1 - y) * (1 - (y_pred - 0.0001)).ln() ]
+        // where:
+        // y = 1.0
+        // y_pred = 0.9
+        let y_pred = Value::new(0.9);
+        let y = Value::new(1.0);
+        let mut e = &Value::new(-1.0)
+            * (&y * (&y_pred + &Value::new(0.0001)).ln()
+                + (&Value::new(1.0) - &y)
+                    * (&Value::new(1.0) - (&y_pred - &Value::new(0.0001))).ln());
+        println!("{e}");
+        let leaves = e.backward(1.0);
+        println!("{:?}", leaves);
+        // sum gradient over both uses of y_pred in the computation graph
+        // (one of which will always be zero)
+        assert_eq!(leaves[2].grad + leaves[7].grad, bce_prime(1.0, 0.9));
+
+        fn bce_prime(y: f64, y_pred: f64) -> f64 {
+            -((y / (y_pred + 0.0001)) + (y - 1.0) / (1.0 - (y_pred - 0.0001)))
+        }
     }
 }
