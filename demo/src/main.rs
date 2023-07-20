@@ -36,9 +36,11 @@ fn main() {
         charidxs.push(*chartoi.get(c).unwrap())
     }
 
-    let vocab_size = chars.len();
+    // let vocab_size = chars.len();
+    let vocab_size = 3;
     let n_embd = 5;
-    let block_size = 8;
+    // let block_size = 8;
+    let block_size = 3;
     let n_layers = 1;
     let n_heads = 1;
     let batch_size = 1;
@@ -71,13 +73,18 @@ fn main() {
     // println!("{:?}", chars);
 
     let (x_batch, y_batch) = get_batch(charidxs, batch_size, block_size);
+    let x_batch = vec![vec![0, 1, 2]];
+    let y_batch = vec![vec![0, 0, 0]];
     // println!("x = {:?}", x_batch);
     // println!("y = {:?}", y_batch);
 
-    let mut transformer =
-        Transformer::new(vocab_size, n_embd, block_size, n_layers, n_heads, head_size);
+    let mut transformer = Transformer::new(
+        vocab_size, n_embd, block_size, n_layers, n_heads, head_size, batch_size,
+    );
 
     let (logits_batch, loss) = transformer.forward(&x_batch, Some(&y_batch)); // (B,T,vocab_size)
+    transformer.zero_grad();
+    transformer.backward();
     println!(
         "shape of logits: {:?}",
         (
@@ -87,8 +94,7 @@ fn main() {
         )
     );
     if let Some(l) = loss {
-        // println!("{l}");
-        println!("{:?}", l.resolve());
+        println!("{:?}", l);
     }
 
     // // drop batch paralleilisation

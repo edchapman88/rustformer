@@ -288,10 +288,10 @@ impl Node {
                 };
                 match r_ch {
                     NodeChild::Leaf(value) => {
-                        value.grad = l_val.powf(r_val) * r_val.ln() * out_grad
+                        value.grad = l_val.powf(r_val) * l_val.ln() * out_grad
                     }
                     NodeChild::Node(node) => {
-                        node._backward(l_val.powf(r_val) * r_val.ln() * out_grad)
+                        node._backward(l_val.powf(r_val) * l_val.ln() * out_grad)
                     }
                 };
             }
