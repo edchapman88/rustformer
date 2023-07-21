@@ -1,8 +1,54 @@
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::{
     fmt::Display,
     ops::{Add, Mul, Sub},
 };
 
+#[derive(PartialEq, Debug, Clone)]
+pub struct Cell {
+    val: RefCell<Value>,
+}
+
+impl Cell {
+    pub fn new(data: f64) -> Cell {
+        Cell {
+            val: RefCell::new(Value::new(data)),
+        }
+    }
+}
+
+#[derive(PartialEq, Debug, Clone)]
+pub struct CellPtr {
+    ptr: Rc<Cell>,
+}
+impl CellPtr {
+    pub fn new(cell: Rc<Cell>) -> CellPtr {
+        CellPtr { ptr: cell }
+    }
+    pub fn from_f64(data: f64) -> CellPtr {
+        CellPtr {
+            ptr: Rc::new(Cell::new(data)),
+        }
+    }
+    pub fn resolve(&self) -> f64 {
+        self.ptr.val.borrow().resolve()
+    }
+    pub fn data_ref(&self) -> f64 {
+        self.ptr.val.borrow().resolve()
+    }
+    pub fn grad_ref(&self) -> f64 {
+        self.ptr.val.borrow().grad
+    }
+    pub fn add_grad(&self, g: f64) {
+        self.ptr.val.borrow_mut().grad += g
+    }
+    pub fn clone(cell_ptr: &CellPtr) -> CellPtr {
+        CellPtr {
+            ptr: Rc::clone(&cell_ptr.ptr),
+        }
+    }
+}
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub struct Value {
     pub data: f64,
@@ -36,13 +82,13 @@ pub enum NodeOp {
 #[derive(PartialEq, Debug, Clone)]
 pub enum NodeChild {
     Node(Node),
-    Leaf(Value),
+    Leaf(CellPtr),
 }
 
 impl NodeChild {
     fn resolve(&self) -> f64 {
         match self {
-            NodeChild::Leaf(value) => value.resolve(),
+            NodeChild::Leaf(cellptr) => cellptr.resolve(),
             NodeChild::Node(node) => node.resolve(),
         }
     }
@@ -55,7 +101,9 @@ impl Node {
 
     pub fn placeHolder() -> Node {
         Node {
-            op: NodeOp::Ln(Box::new(NodeChild::Leaf(Value::new(0.0)))),
+            op: NodeOp::Ln(Box::new(NodeChild::Leaf(CellPtr::new(Rc::new(Cell::new(
+                0.0,
+            )))))),
             label: String::from("dummy"),
         }
     }
@@ -81,14 +129,14 @@ impl Node {
                                 res += "     ";
                                 res += &self.label;
                                 res += "\n   /   \\ \n";
-                                res += &l_val.data.to_string();
+                                res += &l_val.data_ref().to_string();
                                 res += "[";
-                                res += &l_val.grad.to_string();
+                                res += &l_val.grad_ref().to_string();
                                 res += "]";
                                 res += "   ";
-                                res += &r_val.data.to_string();
+                                res += &r_val.data_ref().to_string();
                                 res += "[";
-                                res += &r_val.grad.to_string();
+                                res += &r_val.grad_ref().to_string();
                                 res += "]";
                             }
                             NodeChild::Node(r_node) => {
@@ -96,9 +144,9 @@ impl Node {
                                 res += "     ";
                                 res += &self.label;
                                 res += "\n   /   \\ \n";
-                                res += &l_val.data.to_string();
+                                res += &l_val.data_ref().to_string();
                                 res += "[";
-                                res += &l_val.grad.to_string();
+                                res += &l_val.grad_ref().to_string();
                                 res += "]\n";
                                 res += &r_node.stringify();
                             }
@@ -111,9 +159,9 @@ impl Node {
                                 res += "     ";
                                 res += &self.label;
                                 res += "\n   /   \\ \n        ";
-                                res += &r_val.data.to_string();
+                                res += &r_val.data_ref().to_string();
                                 res += "[";
-                                res += &r_val.grad.to_string();
+                                res += &r_val.grad_ref().to_string();
                                 res += "]\n";
                                 res += &l_node.stringify();
                             }
@@ -156,13 +204,13 @@ impl Node {
                 let (l_ch, r_ch) = &*(*bxd_children);
                 // handle left child
                 let l_val = match l_ch {
-                    NodeChild::Leaf(value) => value.data,
+                    NodeChild::Leaf(cell) => cell.data_ref(),
                     NodeChild::Node(node) => node.resolve(),
                 };
 
                 // handle right child
                 let r_val = match r_ch {
-                    NodeChild::Leaf(value) => value.data,
+                    NodeChild::Leaf(cell) => cell.data_ref(),
                     NodeChild::Node(node) => node.resolve(),
                 };
 
@@ -187,90 +235,79 @@ impl Node {
             NodeOp::Ln(_) => panic!("handled with early return from previous match"),
         }
     }
+    // fn _get_leaves(&self, mut leaf_vec: Vec<Value>) -> Vec<Value> {
+    //     // order of maths operation
+    //     match &self.op {
+    //         NodeOp::Add(bxd_children)
+    //         | NodeOp::Sub(bxd_children)
+    //         | NodeOp::Mul(bxd_children)
+    //         | NodeOp::Pow(bxd_children) => {
+    //             let (l_ch, r_ch) = &*(*bxd_children);
+    //             // handle left child
+    //             match l_ch {
+    //                 NodeChild::Leaf(value) => {
+    //                     leaf_vec.push(value.clone());
+    //                 }
+    //                 NodeChild::Node(node) => {
+    //                     leaf_vec = node._get_leaves(leaf_vec);
+    //                 }
+    //             };
 
-    pub fn backward(&mut self, out_grad: f64) -> Vec<Value> {
-        // calls _backward recursively (working down the tree)
-        // and then calls _get_leaves() to return vec of leaves in
-        // order of math operations
-        // d * ( a + b ) + c => [d',a',b',c']
-        // where ' means grad
-        self._backward(out_grad);
-        let leaf_vec = Vec::new();
-        self._get_leaves(leaf_vec)
-    }
-    fn _get_leaves(&self, mut leaf_vec: Vec<Value>) -> Vec<Value> {
-        // order of maths operation
-        match &self.op {
-            NodeOp::Add(bxd_children)
-            | NodeOp::Sub(bxd_children)
-            | NodeOp::Mul(bxd_children)
-            | NodeOp::Pow(bxd_children) => {
-                let (l_ch, r_ch) = &*(*bxd_children);
-                // handle left child
-                match l_ch {
-                    NodeChild::Leaf(value) => {
-                        leaf_vec.push(value.clone());
-                    }
-                    NodeChild::Node(node) => {
-                        leaf_vec = node._get_leaves(leaf_vec);
-                    }
-                };
-
-                // handle right child
-                match r_ch {
-                    NodeChild::Leaf(value) => {
-                        leaf_vec.push(value.clone());
-                    }
-                    NodeChild::Node(node) => {
-                        leaf_vec = node._get_leaves(leaf_vec);
-                    }
-                };
-            }
-            NodeOp::Ln(bxd_child) => {
-                let child = &*(*bxd_child);
-                match child {
-                    NodeChild::Leaf(_) => panic!(".ln() not implemented for Value struct"),
-                    NodeChild::Node(node) => {
-                        leaf_vec = node._get_leaves(leaf_vec);
-                    }
-                }
-            }
-        };
-        leaf_vec
-    }
-    fn _backward(&mut self, out_grad: f64) {
+    //             // handle right child
+    //             match r_ch {
+    //                 NodeChild::Leaf(value) => {
+    //                     leaf_vec.push(value.clone());
+    //                 }
+    //                 NodeChild::Node(node) => {
+    //                     leaf_vec = node._get_leaves(leaf_vec);
+    //                 }
+    //             };
+    //         }
+    //         NodeOp::Ln(bxd_child) => {
+    //             let child = &*(*bxd_child);
+    //             match child {
+    //                 NodeChild::Leaf(_) => panic!(".ln() not implemented for Value struct"),
+    //                 NodeChild::Node(node) => {
+    //                     leaf_vec = node._get_leaves(leaf_vec);
+    //                 }
+    //             }
+    //         }
+    //     };
+    //     leaf_vec
+    // }
+    fn backward(&mut self, out_grad: f64) {
         match &mut self.op {
             NodeOp::Add(bxd_children) => {
                 let (l_ch, r_ch) = &mut *(*bxd_children);
                 match l_ch {
-                    NodeChild::Leaf(value) => value.grad = out_grad,
-                    NodeChild::Node(node) => node._backward(out_grad),
+                    NodeChild::Leaf(cell) => cell.add_grad(out_grad),
+                    NodeChild::Node(node) => node.backward(out_grad),
                 };
                 match r_ch {
-                    NodeChild::Leaf(value) => value.grad = out_grad,
-                    NodeChild::Node(node) => node._backward(out_grad),
+                    NodeChild::Leaf(cell) => cell.add_grad(out_grad),
+                    NodeChild::Node(node) => node.backward(out_grad),
                 }
             }
             NodeOp::Sub(bxd_children) => {
                 let (l_ch, r_ch) = &mut *(*bxd_children);
                 match l_ch {
-                    NodeChild::Leaf(value) => value.grad = out_grad,
-                    NodeChild::Node(node) => node._backward(out_grad),
+                    NodeChild::Leaf(cell) => cell.add_grad(out_grad),
+                    NodeChild::Node(node) => node.backward(out_grad),
                 };
                 match r_ch {
-                    NodeChild::Leaf(value) => value.grad = -out_grad,
-                    NodeChild::Node(node) => node._backward(-out_grad),
+                    NodeChild::Leaf(cell) => cell.add_grad(-out_grad),
+                    NodeChild::Node(node) => node.backward(-out_grad),
                 }
             }
             NodeOp::Mul(bxd_children) => {
                 let (l_ch, r_ch) = &mut *(*bxd_children);
                 match l_ch {
-                    NodeChild::Leaf(value) => value.grad = r_ch.resolve() * out_grad,
-                    NodeChild::Node(node) => node._backward(r_ch.resolve() * out_grad),
+                    NodeChild::Leaf(cell) => cell.add_grad(r_ch.resolve() * out_grad),
+                    NodeChild::Node(node) => node.backward(r_ch.resolve() * out_grad),
                 };
                 match r_ch {
-                    NodeChild::Leaf(value) => value.grad = l_ch.resolve() * out_grad,
-                    NodeChild::Node(node) => node._backward(l_ch.resolve() * out_grad),
+                    NodeChild::Leaf(cell) => cell.add_grad(l_ch.resolve() * out_grad),
+                    NodeChild::Node(node) => node.backward(l_ch.resolve() * out_grad),
                 };
             }
             NodeOp::Pow(bxd_children) => {
@@ -279,19 +316,19 @@ impl Node {
                 let l_val = l_ch.resolve();
                 let r_val = r_ch.resolve();
                 match l_ch {
-                    NodeChild::Leaf(value) => {
-                        value.grad = r_val * l_val.powf(r_val - 1.0) * out_grad
+                    NodeChild::Leaf(cell) => {
+                        cell.add_grad(r_val * l_val.powf(r_val - 1.0) * out_grad);
                     }
                     NodeChild::Node(node) => {
-                        node._backward(r_val * l_val.powf(r_val - 1.0) * out_grad)
+                        node.backward(r_val * l_val.powf(r_val - 1.0) * out_grad);
                     }
                 };
                 match r_ch {
-                    NodeChild::Leaf(value) => {
-                        value.grad = l_val.powf(r_val) * l_val.ln() * out_grad
+                    NodeChild::Leaf(cell) => {
+                        cell.add_grad(l_val.powf(r_val) * l_val.ln() * out_grad);
                     }
                     NodeChild::Node(node) => {
-                        node._backward(l_val.powf(r_val) * l_val.ln() * out_grad)
+                        node.backward(l_val.powf(r_val) * l_val.ln() * out_grad)
                     }
                 };
             }
@@ -300,67 +337,43 @@ impl Node {
                 let child_val = child.resolve();
                 match child {
                     NodeChild::Leaf(_) => panic!(".ln() not implemented for Value struct"),
-                    NodeChild::Node(node) => node._backward(out_grad / child_val),
+                    NodeChild::Node(node) => node.backward(out_grad / child_val),
                 }
             }
         };
     }
 }
 
-// impl Node {
-// pub fn backward(&self, out_grad: f64) -> (Value,Value) {
-//     match self {
-//         Node::Add((l,r)) => {
-//             (Value {data:*l, grad:Some(out_grad)},
-//                 Value {data:*r, grad:Some(out_grad)})
-//         },
-//         Node::Mul((l,r)) => {
-//             (Value {data:*l, grad: Some(r * out_grad)},
-//                 Value {data:*r, grad: Some(l * out_grad)})
-//         }
-//     }
-// }
-// }
-
 // assume you can only do operations between Value objects or Nodes (not plain floats)
 // every Value used in an operation becomes a leaf and will have a grad returned following
 // a call to backward.
-impl Add for &Value {
+impl Add for CellPtr {
     type Output = Node;
     fn add(self, rhs: Self) -> Self::Output {
         Node::new(
-            NodeOp::Add(Box::new((
-                NodeChild::Leaf(Value::new(self.data)),
-                NodeChild::Leaf(Value::new(rhs.data)),
-            ))),
+            NodeOp::Add(Box::new((NodeChild::Leaf(self), NodeChild::Leaf(rhs)))),
             String::from("+"),
         )
     }
 }
 
 // add node to leaf
-impl Add<Node> for &Value {
+impl Add<Node> for CellPtr {
     type Output = Node;
     fn add(self, rhs: Node) -> Self::Output {
         Node::new(
-            NodeOp::Add(Box::new((
-                NodeChild::Leaf(Value::new(self.data)),
-                NodeChild::Node(rhs),
-            ))),
+            NodeOp::Add(Box::new((NodeChild::Leaf(self), NodeChild::Node(rhs)))),
             String::from("+"),
         )
     }
 }
 
 // add leaf to node
-impl Add<&Value> for Node {
+impl Add<CellPtr> for Node {
     type Output = Node;
-    fn add(self, rhs: &Value) -> Self::Output {
+    fn add(self, rhs: CellPtr) -> Self::Output {
         Node::new(
-            NodeOp::Add(Box::new((
-                NodeChild::Node(self),
-                NodeChild::Leaf(Value::new(rhs.data)),
-            ))),
+            NodeOp::Add(Box::new((NodeChild::Node(self), NodeChild::Leaf(rhs)))),
             String::from("+"),
         )
     }
@@ -376,42 +389,33 @@ impl Add for Node {
     }
 }
 
-impl Sub for &Value {
+impl Sub for CellPtr {
     type Output = Node;
     fn sub(self, rhs: Self) -> Self::Output {
         Node::new(
-            NodeOp::Sub(Box::new((
-                NodeChild::Leaf(Value::new(self.data)),
-                NodeChild::Leaf(Value::new(rhs.data)),
-            ))),
+            NodeOp::Sub(Box::new((NodeChild::Leaf(self), NodeChild::Leaf(rhs)))),
             String::from("-"),
         )
     }
 }
 
 // subtract node from leaf
-impl Sub<Node> for &Value {
+impl Sub<Node> for CellPtr {
     type Output = Node;
     fn sub(self, rhs: Node) -> Self::Output {
         Node::new(
-            NodeOp::Sub(Box::new((
-                NodeChild::Leaf(Value::new(self.data)),
-                NodeChild::Node(rhs),
-            ))),
+            NodeOp::Sub(Box::new((NodeChild::Leaf(self), NodeChild::Node(rhs)))),
             String::from("-"),
         )
     }
 }
 
 // subtract leaf from node
-impl Sub<&Value> for Node {
+impl Sub<CellPtr> for Node {
     type Output = Node;
-    fn sub(self, rhs: &Value) -> Self::Output {
+    fn sub(self, rhs: CellPtr) -> Self::Output {
         Node::new(
-            NodeOp::Sub(Box::new((
-                NodeChild::Node(self),
-                NodeChild::Leaf(Value::new(rhs.data)),
-            ))),
+            NodeOp::Sub(Box::new((NodeChild::Node(self), NodeChild::Leaf(rhs)))),
             String::from("-"),
         )
     }
@@ -427,41 +431,32 @@ impl Sub for Node {
     }
 }
 
-impl Mul for &Value {
+impl Mul for CellPtr {
     type Output = Node;
     fn mul(self, rhs: Self) -> Self::Output {
         Node::new(
-            NodeOp::Mul(Box::new((
-                NodeChild::Leaf(Value::new(self.data)),
-                NodeChild::Leaf(Value::new(rhs.data)),
-            ))),
+            NodeOp::Mul(Box::new((NodeChild::Leaf(self), NodeChild::Leaf(rhs)))),
             String::from("*"),
         )
     }
 }
-// mul val by node
-impl Mul<Node> for &Value {
+// mul ptr by node
+impl Mul<Node> for CellPtr {
     type Output = Node;
     fn mul(self, rhs: Node) -> Self::Output {
         Node::new(
-            NodeOp::Mul(Box::new((
-                NodeChild::Leaf(Value::new(self.data)),
-                NodeChild::Node(rhs),
-            ))),
+            NodeOp::Mul(Box::new((NodeChild::Leaf(self), NodeChild::Node(rhs)))),
             String::from("*"),
         )
     }
 }
 
-// mul node by val
-impl Mul<&Value> for Node {
+// mul node by ptr
+impl Mul<CellPtr> for Node {
     type Output = Node;
-    fn mul(self, rhs: &Value) -> Self::Output {
+    fn mul(self, rhs: CellPtr) -> Self::Output {
         Node::new(
-            NodeOp::Mul(Box::new((
-                NodeChild::Node(self),
-                NodeChild::Leaf(Value::new(rhs.data)),
-            ))),
+            NodeOp::Mul(Box::new((NodeChild::Node(self), NodeChild::Leaf(rhs)))),
             String::from("*"),
         )
     }
@@ -477,13 +472,10 @@ impl Mul for Node {
     }
 }
 
-impl Value {
-    pub fn pow_val(self, e: &Value) -> Node {
+impl CellPtr {
+    pub fn pow_val(self, e: CellPtr) -> Node {
         Node::new(
-            NodeOp::Pow(Box::new((
-                NodeChild::Leaf(self),
-                NodeChild::Leaf(e.clone()),
-            ))),
+            NodeOp::Pow(Box::new((NodeChild::Leaf(self), NodeChild::Leaf(e)))),
             String::from("^"),
         )
     }
@@ -496,12 +488,9 @@ impl Value {
 }
 
 impl Node {
-    pub fn pow_val(self, e: &Value) -> Node {
+    pub fn pow_val(self, e: CellPtr) -> Node {
         Node::new(
-            NodeOp::Pow(Box::new((
-                NodeChild::Node(self),
-                NodeChild::Leaf(e.clone()),
-            ))),
+            NodeOp::Pow(Box::new((NodeChild::Node(self), NodeChild::Leaf(e)))),
             String::from("^"),
         )
     }
@@ -531,9 +520,10 @@ mod tests {
 
     #[test]
     fn build_and_resolve_graph() {
-        let graph = &Value::new(4.0)
-            + (&Value::new(2.0) * &Value::new(3.0) + &Value::new(4.0)) * &Value::new(5.0)
-            + &Value::new(7.0);
+        let graph = CellPtr::from_f64(4.0)
+            + (CellPtr::from_f64(2.0) * CellPtr::from_f64(3.0) + CellPtr::from_f64(4.0))
+                * CellPtr::from_f64(5.0)
+            + CellPtr::from_f64(7.0);
         println!(
             "\n-------------------------------------\n Printing graph for 4 + (2 * 3 + 4) * 5 + 7"
         );
@@ -543,56 +533,40 @@ mod tests {
 
     #[test]
     fn backward() {
-        let mut graph = &Value::new(4.0)
-            + (&Value::new(2.0) * &Value::new(3.0) + &Value::new(4.0)) * &Value::new(5.0)
-            + &Value::new(7.0);
-        let leaves = graph.backward(1.0);
+        let x0 = CellPtr::from_f64(4.0);
+        let x1 = CellPtr::from_f64(2.0);
+        let x2 = CellPtr::from_f64(3.0);
+        let x3 = CellPtr::from_f64(4.0);
+        let x4 = CellPtr::from_f64(5.0);
+        let x5 = CellPtr::from_f64(7.0);
+
+        let mut graph = CellPtr::clone(&x0)
+            + (CellPtr::clone(&x1) * CellPtr::clone(&x2) + CellPtr::clone(&x3))
+                * CellPtr::clone(&x4)
+            + CellPtr::clone(&x5);
+        graph.backward(1.0);
         println!("\n-------------------------------------\n visualise after backward()");
         println!("{graph}\n");
-        println!("the leaves are returned by .backward(), in the order in which the maths operations were called\n");
-        println!("note, this is not the order in which the operations are carried out w.r.t the priority ordering of operations in mathematics\n");
-        println!("the calling order was: 4 + (2 * 3 + 4) * 5 + 7\n");
-        println!("{:?}\n-------------------------------------\n", leaves);
 
-        assert_eq!(
-            leaves,
-            vec![
-                Value {
-                    data: 4.0,
-                    grad: 1.0
-                },
-                Value {
-                    data: 2.0,
-                    grad: 15.0
-                },
-                Value {
-                    data: 3.0,
-                    grad: 10.0
-                },
-                Value {
-                    data: 4.0,
-                    grad: 5.0
-                },
-                Value {
-                    data: 5.0,
-                    grad: 10.0
-                },
-                Value {
-                    data: 7.0,
-                    grad: 1.0
-                },
-            ]
-        )
+        assert_eq!(x0.grad_ref(), 1.0);
+        assert_eq!(x1.grad_ref(), 15.0);
+        assert_eq!(x2.grad_ref(), 10.0);
+        assert_eq!(x3.grad_ref(), 5.0);
+        assert_eq!(x4.grad_ref(), 10.0);
+        assert_eq!(x5.grad_ref(), 1.0);
     }
 
     #[test]
     fn exponentiate_node() {
-        let mut graph =
-            (&Value::new(2.0) + &Value::new(1.0)).pow_node(&Value::new(2.0) + &Value::new(1.0));
-        let leaves = graph.backward(1.0);
+        let x0 = CellPtr::from_f64(2.0);
+        let x1 = CellPtr::from_f64(1.0);
+
+        let mut graph = (CellPtr::clone(&x0) + CellPtr::clone(&x1))
+            .pow_node(CellPtr::from_f64(2.0) + CellPtr::from_f64(1.0));
+        graph.backward(1.0);
         println!("{graph}");
-        println!("{:?}", leaves);
-        assert_eq!(leaves[0].grad, 27.0);
+
+        assert_eq!(x0.grad_ref(), 27.0);
     }
 
     #[test]
@@ -605,12 +579,16 @@ mod tests {
         // w0 = 8
         // b0 = 4
         // y0 = 1
-        let y_pred0 = &Value::new(2.0) * &Value::new(8.0) + &Value::new(4.0);
+        let x0 = CellPtr::from_f64(2.0);
+        let w0 = CellPtr::from_f64(8.0);
+        let b0 = CellPtr::from_f64(4.0);
+        let y0 = CellPtr::from_f64(1.0);
 
-        let mut graph = (y_pred0.clone() - &Value::new(1.0)).pow_val(&Value::new(2.0));
-        let leaves = graph.backward(1.0);
+        let y_pred0 = CellPtr::clone(&x0) * CellPtr::clone(&w0) + CellPtr::clone(&b0);
+
+        let mut graph = (y_pred0 - CellPtr::clone(&y0)).pow_val(CellPtr::from_f64(2.0));
+        graph.backward(1.0);
         println!("{graph}");
-        println!("{:?}", leaves);
 
         // d/dw = 1/n sum( -2 * x_i(y_i - (w_i * x_i - b_i)) )
         // d/db = 1/n sum( -2 * (y_i - (w_i * x_i - b_i)) )
@@ -618,8 +596,8 @@ mod tests {
         // d/dw0 = -2 * x0(y0 - (w0 * x0 + b0)) = 76
         // d/db0 = -2 * (y0 - (w0 * x0 + b0)) = 38
 
-        assert_eq!(leaves[1].grad, 76.0);
-        assert_eq!(leaves[2].grad, 38.0);
+        assert_eq!(w0.grad_ref(), 76.0);
+        assert_eq!(b0.grad_ref(), 38.0);
     }
 
     #[test]
@@ -628,18 +606,19 @@ mod tests {
         // where:
         // y = 1.0
         // y_pred = 0.9
-        let y_pred = Value::new(0.9);
-        let y = Value::new(1.0);
-        let mut e = &Value::new(-1.0)
-            * (&y * (&y_pred + &Value::new(0.0001)).ln()
-                + (&Value::new(1.0) - &y)
-                    * (&Value::new(1.0) - (&y_pred - &Value::new(0.0001))).ln());
+        let y_pred = CellPtr::from_f64(0.9);
+        let y = CellPtr::from_f64(1.0);
+
+        let mut e = CellPtr::from_f64(-1.0)
+            * (CellPtr::clone(&y) * (CellPtr::clone(&y_pred) + CellPtr::from_f64(0.0001)).ln()
+                + (CellPtr::from_f64(1.0) - CellPtr::clone(&y))
+                    * (CellPtr::from_f64(1.0)
+                        - (CellPtr::clone(&y_pred) - CellPtr::from_f64(0.0001)))
+                    .ln());
         println!("{e}");
-        let leaves = e.backward(1.0);
-        println!("{:?}", leaves);
-        // sum gradient over both uses of y_pred in the computation graph
-        // (one of which will always be zero)
-        assert_eq!(leaves[2].grad + leaves[7].grad, bce_prime(1.0, 0.9));
+        e.backward(1.0);
+
+        assert_eq!(y_pred.grad_ref(), bce_prime(1.0, 0.9));
 
         fn bce_prime(y: f64, y_pred: f64) -> f64 {
             -((y / (y_pred + 0.0001)) + (y - 1.0) / (1.0 - (y_pred - 0.0001)))
