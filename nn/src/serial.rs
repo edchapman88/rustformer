@@ -1,26 +1,25 @@
+use matrix_library::Matrix;
+use micrograd::CellPtr;
+
 use crate::dense_layer::DenseLayer;
 
 pub trait Layer {
-    fn forward(&mut self, x: Vec<f64>) -> Vec<f64>;
-    fn backward(&mut self, out_grad: Vec<f64>) -> Result<(), LayerError>;
-    fn update(&mut self, l_rate: f64);
-    fn zero_grad(&mut self);
-    fn get_input_grad(&self) -> &[f64];
+    fn forward(&self, x: Vec<CellPtr>) -> Vec<CellPtr>;
 }
 #[derive(Debug)]
 pub enum LayerError {
     MissingTree(String),
     MissingActivationOutputs(String),
-    MissingActivationInputs(String)
+    MissingActivationInputs(String),
 }
 
 pub struct Serial {
-    pub layers: Vec<Box<dyn Layer>>
+    pub layers: Vec<Box<dyn Layer>>,
 }
 
 impl Serial {
-    pub fn new(layers:Vec<Box<dyn Layer>>) -> Serial {
-        Serial { layers, }
+    pub fn new(layers: Vec<Box<dyn Layer>>) -> Serial {
+        Serial { layers }
     }
     pub fn forward(&mut self, x: &Vec<f64>) -> Vec<f64> {
         let mut tmp = x.to_vec();
@@ -30,7 +29,7 @@ impl Serial {
         }
         tmp
     }
-    pub fn backward(&mut self, mut out_grad:Vec<f64>) -> Result<(), LayerError> {
+    pub fn backward(&mut self, mut out_grad: Vec<f64>) -> Result<(), LayerError> {
         for l in self.layers.iter_mut().rev() {
             l.backward(out_grad)?;
             out_grad = Vec::from(l.get_input_grad())
@@ -48,4 +47,3 @@ impl Serial {
         }
     }
 }
-

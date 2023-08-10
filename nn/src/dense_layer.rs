@@ -1,21 +1,24 @@
 use crate::serial::{Layer, LayerError};
-use micrograd::{Node, Value};
+use matrix_library::Matrix;
+use micrograd::{CellPtr, Node, Value};
 use rand::{distributions::Distribution, thread_rng, Rng};
 use statrs::distribution::Normal;
 
 pub struct DenseLayer {
     pub i_size: usize,
     pub o_size: usize,
-    w: Vec<Value>,
-    b: Vec<Value>,
-    tree: Vec<Option<Node>>,
-    pub input_grad: Vec<f64>,
+    w: Matrix<CellPtr>,
+    b: Matrix<CellPtr>,
+    // w: Vec<Value>,
+    // b: Vec<Value>,
 }
 
 impl Layer for DenseLayer {
-    fn forward(&mut self, x: Vec<f64>) -> Vec<f64> {
-        // generate a tree from the forward pass and assign to layer.tree
-        // take a reference to the tree and resolve to a returned value
+    fn forward(&self, x: Matrix<CellPtr>) -> Matrix<CellPtr> {
+        let res = Matrix::matmul(&self, b)
+
+
+
         let mut res = Vec::new();
         for o in 0..self.o_size {
             let mut tmp_trees = Vec::new();
@@ -34,43 +37,6 @@ impl Layer for DenseLayer {
             self.tree[o] = Some(t);
         }
         res
-    }
-    fn backward(&mut self, out_grad: Vec<f64>) -> Result<(), LayerError> {
-        // if there is a tree, call backward on the tree
-        // mutate the data in the layer with the grads returned from backward
-        for o in 0..self.o_size {
-            if let Some(ref mut tree) = self.tree[o] {
-                let mut leaves: Vec<Value> = tree.backward(out_grad[o]);
-                // grads are ordered in order of maths operations
-                // eg. when o=0: [x0,w00,x1,w01, ... ,b0]
-                for i in 0..self.i_size {
-                    self.input_grad[i] += leaves.remove(0).grad;
-                    self.w[(o * self.i_size) + i] = leaves.remove(0);
-                }
-                self.b[o] = leaves.remove(0);
-            }
-        }
-        Ok(())
-    }
-    fn update(&mut self, l_rate: f64) {
-        for mut wi in self.w.iter_mut() {
-            wi.data -= l_rate * wi.grad;
-        }
-        for mut bi in self.b.iter_mut() {
-            bi.data -= l_rate * bi.grad;
-        }
-    }
-    fn zero_grad(&mut self) {
-        for mut wi in self.w.iter_mut() {
-            wi.grad = 0.0;
-        }
-        for mut bi in self.b.iter_mut() {
-            bi.grad = 0.0;
-        }
-        self.input_grad = vec![0.0; self.i_size];
-    }
-    fn get_input_grad(&self) -> &[f64] {
-        self.input_grad.as_slice()
     }
 }
 
