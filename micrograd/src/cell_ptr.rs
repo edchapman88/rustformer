@@ -16,15 +16,12 @@ impl Cell {
     }
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug)]
 pub struct CellPtr {
     ptr: Rc<Cell>,
 }
 impl CellPtr {
-    pub fn new(cell: Rc<Cell>) -> CellPtr {
-        CellPtr { ptr: cell }
-    }
-    pub fn from_f64(data: f64) -> CellPtr {
+    pub fn new(data: f64) -> CellPtr {
         CellPtr {
             ptr: Rc::new(Cell::new(data)),
         }
@@ -41,9 +38,12 @@ impl CellPtr {
     pub fn add_grad(&self, g: f64) {
         self.ptr.val.borrow_mut().grad += g
     }
-    pub fn clone(cell_ptr: &CellPtr) -> CellPtr {
+}
+
+impl Clone for CellPtr {
+    fn clone(&self) -> Self {
         CellPtr {
-            ptr: Rc::clone(&cell_ptr.ptr),
+            ptr: Rc::clone(&self.ptr),
         }
     }
 }

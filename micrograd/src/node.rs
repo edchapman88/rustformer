@@ -14,26 +14,12 @@ pub struct Node {
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum NodeOp {
-    Add(Box<(NodeChild, NodeChild)>),
-    Sub(Box<(NodeChild, NodeChild)>),
-    Mul(Box<(NodeChild, NodeChild)>),
-    Pow(Box<(NodeChild, NodeChild)>),
-    Ln(Box<NodeChild>),
-}
-
-#[derive(PartialEq, Debug, Clone)]
-pub enum NodeChild {
-    Node(Node),
     Leaf(CellPtr),
-}
-
-impl NodeChild {
-    fn resolve(&self) -> f64 {
-        match self {
-            NodeChild::Leaf(cellptr) => cellptr.resolve(),
-            NodeChild::Node(node) => node.resolve(),
-        }
-    }
+    Add(Box<(Node, Node)>),
+    Sub(Box<(Node, Node)>),
+    Mul(Box<(Node, Node)>),
+    Pow(Box<(Node, Node)>),
+    Ln(Box<Node>),
 }
 
 impl Node {
@@ -41,14 +27,14 @@ impl Node {
         Node { op, label }
     }
 
-    pub fn placeHolder() -> Node {
-        Node {
-            op: NodeOp::Ln(Box::new(NodeChild::Leaf(CellPtr::new(Rc::new(Cell::new(
-                0.0,
-            )))))),
-            label: String::from("dummy"),
-        }
-    }
+    // pub fn placeHolder() -> Node {
+    //     Node {
+    //         op: NodeOp::Ln(Box::new(NodeChild::Leaf(CellPtr::new(Rc::new(Cell::new(
+    //             0.0,
+    //         )))))),
+    //         label: String::from("dummy"),
+    //     }
+    // }
 
     pub fn stringify(&self) -> String {
         // let mut res = String::from("\n     ");
@@ -57,79 +43,70 @@ impl Node {
         let mut res = String::from("\n");
 
         match &self.op {
+            NodeOp::Leaf(cellptr) => res += &cellptr.data_ref().to_string(),
             NodeOp::Add(bxd_children)
             | NodeOp::Mul(bxd_children)
             | NodeOp::Pow(bxd_children)
             | NodeOp::Sub(bxd_children) => {
                 let (l_ch, r_ch) = &*(*bxd_children);
 
-                match l_ch {
-                    NodeChild::Leaf(l_val) => {
-                        match r_ch {
-                            NodeChild::Leaf(r_val) => {
-                                // both leaf
-                                res += "     ";
-                                res += &self.label;
-                                res += "\n   /   \\ \n";
-                                res += &l_val.data_ref().to_string();
-                                res += "[";
-                                res += &l_val.grad_ref().to_string();
-                                res += "]";
-                                res += "   ";
-                                res += &r_val.data_ref().to_string();
-                                res += "[";
-                                res += &r_val.grad_ref().to_string();
-                                res += "]";
-                            }
-                            NodeChild::Node(r_node) => {
-                                // l leaf, r node
-                                res += "     ";
-                                res += &self.label;
-                                res += "\n   /   \\ \n";
-                                res += &l_val.data_ref().to_string();
-                                res += "[";
-                                res += &l_val.grad_ref().to_string();
-                                res += "]\n";
-                                res += &r_node.stringify();
-                            }
-                        }
+                if let NodeOp::Leaf(l_val) = l_ch.op {
+                    if let NodeOp::Leaf(r_val) = r_ch.op {
+                        // both leaf
+                        res += "     ";
+                        res += &self.label;
+                        res += "\n   /   \\ \n";
+                        res += &l_val.data_ref().to_string();
+                        res += "[";
+                        res += &l_val.grad_ref().to_string();
+                        res += "]";
+                        res += "   ";
+                        res += &r_val.data_ref().to_string();
+                        res += "[";
+                        res += &r_val.grad_ref().to_string();
+                        res += "]";
+                    } else {
+                        // l leaf, r node
+                        res += "     ";
+                        res += &self.label;
+                        res += "\n   /   \\ \n";
+                        res += &l_val.data_ref().to_string();
+                        res += "[";
+                        res += &l_val.grad_ref().to_string();
+                        res += "]\n";
+                        res += &r_ch.stringify();
                     }
-                    NodeChild::Node(l_node) => {
-                        match r_ch {
-                            NodeChild::Leaf(r_val) => {
-                                // l node, r leaf
-                                res += "     ";
-                                res += &self.label;
-                                res += "\n   /   \\ \n        ";
-                                res += &r_val.data_ref().to_string();
-                                res += "[";
-                                res += &r_val.grad_ref().to_string();
-                                res += "]\n";
-                                res += &l_node.stringify();
-                            }
-                            NodeChild::Node(r_node) => {
-                                // both node
-                                res += "     ";
-                                res += &self.label;
-                                res += "\n   /   \\ \n";
-                                res += &l_node.stringify();
-                                res += "\n";
-                                res += &r_node.stringify();
-                            }
-                        }
+                } else {
+                    if let NodeOp::Leaf(r_val) = r_ch.op {
+                        // l node, r leaf
+                        res += "     ";
+                        res += &self.label;
+                        res += "\n   /   \\ \n        ";
+                        res += &r_val.data_ref().to_string();
+                        res += "[";
+                        res += &r_val.grad_ref().to_string();
+                        res += "]\n";
+                        res += &l_ch.stringify();
+                    } else {
+                        // both node
+                        res += "     ";
+                        res += &self.label;
+                        res += "\n   /   \\ \n";
+                        res += &l_ch.stringify();
+                        res += "\n";
+                        res += &r_ch.stringify();
                     }
                 }
             }
             NodeOp::Ln(bxd_child) => {
                 let child = &*(*bxd_child);
-                match child {
-                    NodeChild::Leaf(_) => panic!(".ln() not implemented for Value struct"),
-                    NodeChild::Node(node) => {
-                        res += "     ";
-                        res += &self.label;
-                        res += "\n   /\n        ";
-                        res += &node.stringify();
-                    }
+                if let NodeOp::Leaf(cellptr) = child.op {
+                    panic!(".ln() not implemented for Value struct")
+                } else {
+                    res += "     ";
+                    res += &self.label;
+                    res += "\n   /\n        ";
+                    res += &child.stringify();
                 }
             }
         }
