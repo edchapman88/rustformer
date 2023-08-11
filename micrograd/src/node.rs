@@ -175,167 +175,33 @@ impl Node {
     }
 }
 
-// assume you can only do operations between Value objects or Nodes (not plain floats)
-// every Value used in an operation becomes a leaf and will have a grad returned following
-// a call to backward.
-impl Add for CellPtr {
-    type Output = Node;
-    fn add(self, rhs: Self) -> Self::Output {
-        Node::new(
-            NodeOp::Add(Box::new((NodeChild::Leaf(self), NodeChild::Leaf(rhs)))),
-            String::from("+"),
-        )
-    }
-}
-
-// add node to leaf
-impl Add<Node> for CellPtr {
-    type Output = Node;
-    fn add(self, rhs: Node) -> Self::Output {
-        Node::new(
-            NodeOp::Add(Box::new((NodeChild::Leaf(self), NodeChild::Node(rhs)))),
-            String::from("+"),
-        )
-    }
-}
-
-// add leaf to node
-impl Add<CellPtr> for Node {
-    type Output = Node;
-    fn add(self, rhs: CellPtr) -> Self::Output {
-        Node::new(
-            NodeOp::Add(Box::new((NodeChild::Node(self), NodeChild::Leaf(rhs)))),
-            String::from("+"),
-        )
-    }
-}
-
 impl Add for Node {
     type Output = Node;
     fn add(self, rhs: Node) -> Self::Output {
-        Node::new(
-            NodeOp::Add(Box::new((NodeChild::Node(self), NodeChild::Node(rhs)))),
-            String::from("+"),
-        )
-    }
-}
-
-impl Sub for CellPtr {
-    type Output = Node;
-    fn sub(self, rhs: Self) -> Self::Output {
-        Node::new(
-            NodeOp::Sub(Box::new((NodeChild::Leaf(self), NodeChild::Leaf(rhs)))),
-            String::from("-"),
-        )
-    }
-}
-
-// subtract node from leaf
-impl Sub<Node> for CellPtr {
-    type Output = Node;
-    fn sub(self, rhs: Node) -> Self::Output {
-        Node::new(
-            NodeOp::Sub(Box::new((NodeChild::Leaf(self), NodeChild::Node(rhs)))),
-            String::from("-"),
-        )
-    }
-}
-
-// subtract leaf from node
-impl Sub<CellPtr> for Node {
-    type Output = Node;
-    fn sub(self, rhs: CellPtr) -> Self::Output {
-        Node::new(
-            NodeOp::Sub(Box::new((NodeChild::Node(self), NodeChild::Leaf(rhs)))),
-            String::from("-"),
-        )
+        Node::new(NodeOp::Add(Box::new((self, rhs))), String::from("+"))
     }
 }
 
 impl Sub for Node {
     type Output = Node;
     fn sub(self, rhs: Node) -> Self::Output {
-        Node::new(
-            NodeOp::Sub(Box::new((NodeChild::Node(self), NodeChild::Node(rhs)))),
-            String::from("-"),
-        )
-    }
-}
-
-impl Mul for CellPtr {
-    type Output = Node;
-    fn mul(self, rhs: Self) -> Self::Output {
-        Node::new(
-            NodeOp::Mul(Box::new((NodeChild::Leaf(self), NodeChild::Leaf(rhs)))),
-            String::from("*"),
-        )
-    }
-}
-// mul ptr by node
-impl Mul<Node> for CellPtr {
-    type Output = Node;
-    fn mul(self, rhs: Node) -> Self::Output {
-        Node::new(
-            NodeOp::Mul(Box::new((NodeChild::Leaf(self), NodeChild::Node(rhs)))),
-            String::from("*"),
-        )
-    }
-}
-
-// mul node by ptr
-impl Mul<CellPtr> for Node {
-    type Output = Node;
-    fn mul(self, rhs: CellPtr) -> Self::Output {
-        Node::new(
-            NodeOp::Mul(Box::new((NodeChild::Node(self), NodeChild::Leaf(rhs)))),
-            String::from("*"),
-        )
+        Node::new(NodeOp::Sub(Box::new((self, rhs))), String::from("-"))
     }
 }
 
 impl Mul for Node {
     type Output = Node;
     fn mul(self, rhs: Self) -> Self::Output {
-        Node::new(
-            NodeOp::Mul(Box::new((NodeChild::Node(self), NodeChild::Node(rhs)))),
-            String::from("*"),
-        )
-    }
-}
-
-impl CellPtr {
-    pub fn pow_val(self, e: CellPtr) -> Node {
-        Node::new(
-            NodeOp::Pow(Box::new((NodeChild::Leaf(self), NodeChild::Leaf(e)))),
-            String::from("^"),
-        )
-    }
-    pub fn pow_node(self, e: Node) -> Node {
-        Node::new(
-            NodeOp::Pow(Box::new((NodeChild::Leaf(self), NodeChild::Node(e)))),
-            String::from("^"),
-        )
+        Node::new(NodeOp::Mul(Box::new((self, rhs))), String::from("*"))
     }
 }
 
 impl Node {
-    pub fn pow_val(self, e: CellPtr) -> Node {
-        Node::new(
-            NodeOp::Pow(Box::new((NodeChild::Node(self), NodeChild::Leaf(e)))),
-            String::from("^"),
-        )
-    }
-    pub fn pow_node(self, e: Node) -> Node {
-        Node::new(
-            NodeOp::Pow(Box::new((NodeChild::Node(self), NodeChild::Node(e)))),
-            String::from("^"),
-        )
+    pub fn pow(self, e: Node) -> Node {
+        Node::new(NodeOp::Pow(Box::new((self, e))), String::from("^"))
     }
     pub fn ln(self) -> Node {
-        Node::new(
-            NodeOp::Ln(Box::new(NodeChild::Node(self))),
-            String::from("ln"),
-        )
+        Node::new(NodeOp::Ln(Box::new(self)), String::from("ln"))
     }
 }
 
