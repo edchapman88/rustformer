@@ -116,32 +116,17 @@ impl Node {
     pub fn resolve(&self) -> f64 {
         // extract l,r child values regardless of operation
         let (l, r) = match &self.op {
+            NodeOp::Leaf(cellptr) => return cellptr.data_ref(),
             NodeOp::Add(bxd_children)
             | NodeOp::Mul(bxd_children)
             | NodeOp::Pow(bxd_children)
             | NodeOp::Sub(bxd_children) => {
                 let (l_ch, r_ch) = &*(*bxd_children);
-                // handle left child
-                let l_val = match l_ch {
-                    NodeChild::Leaf(cell) => cell.data_ref(),
-                    NodeChild::Node(node) => node.resolve(),
-                };
-
-                // handle right child
-                let r_val = match r_ch {
-                    NodeChild::Leaf(cell) => cell.data_ref(),
-                    NodeChild::Node(node) => node.resolve(),
-                };
-
-                (l_val, r_val)
+                (l_ch.resolve(), r_ch.resolve())
             }
             NodeOp::Ln(bxd_child) => {
                 let child = &*(*bxd_child);
-                let resolved_child = match child {
-                    NodeChild::Leaf(_) => panic!(".ln() not implemented for Value struct"),
-                    NodeChild::Node(node) => node.resolve(),
-                };
-                return resolved_child.ln();
+                return child.resolve().ln();
             }
         };
 
@@ -151,6 +136,7 @@ impl Node {
             NodeOp::Sub(_) => l - r,
             NodeOp::Mul(_) => l * r,
             NodeOp::Pow(_) => l.powf(r),
+            NodeOp::Leaf(_) => panic!("handled with early return from previous match"),
             NodeOp::Ln(_) => panic!("handled with early return from previous match"),
         }
     }
