@@ -27,6 +27,21 @@ impl Node {
         Node { op, label }
     }
 
+    pub fn from_f64(data: f64) -> Node {
+        Node {
+            op: NodeOp::Leaf(CellPtr::new(data)),
+            label: '#'.to_string(),
+        }
+    }
+
+    pub fn leaf(&self) -> Option<&CellPtr> {
+        if let NodeOp::Leaf(cellptr) = &self.op {
+            Some(cellptr)
+        } else {
+            None
+        }
+    }
+
     // pub fn placeHolder() -> Node {
     //     Node {
     //         op: NodeOp::Ln(Box::new(NodeChild::Leaf(CellPtr::new(Rc::new(Cell::new(
@@ -50,8 +65,8 @@ impl Node {
             | NodeOp::Sub(bxd_children) => {
                 let (l_ch, r_ch) = &*(*bxd_children);
 
-                if let NodeOp::Leaf(l_val) = l_ch.op {
-                    if let NodeOp::Leaf(r_val) = r_ch.op {
+                if let NodeOp::Leaf(l_val) = &l_ch.op {
+                    if let NodeOp::Leaf(r_val) = &r_ch.op {
                         // both leaf
                         res += "     ";
                         res += &self.label;
@@ -77,7 +92,7 @@ impl Node {
                         res += &r_ch.stringify();
                     }
                 } else {
-                    if let NodeOp::Leaf(r_val) = r_ch.op {
+                    if let NodeOp::Leaf(r_val) = &r_ch.op {
                         // l node, r leaf
                         res += "     ";
                         res += &self.label;
@@ -100,7 +115,7 @@ impl Node {
             }
             NodeOp::Ln(bxd_child) => {
                 let child = &*(*bxd_child);
-                if let NodeOp::Leaf(cellptr) = child.op {
+                if let NodeOp::Leaf(_) = &child.op {
                     panic!(".ln() not implemented for Value struct")
                 } else {
                     res += "     ";
@@ -217,10 +232,10 @@ mod tests {
 
     #[test]
     fn build_and_resolve_graph() {
-        let graph = CellPtr::from_f64(4.0)
-            + (CellPtr::from_f64(2.0) * CellPtr::from_f64(3.0) + CellPtr::from_f64(4.0))
-                * CellPtr::from_f64(5.0)
-            + CellPtr::from_f64(7.0);
+        let graph = Node::from_f64(4.0)
+            + (Node::from_f64(2.0) * Node::from_f64(3.0) + Node::from_f64(4.0))
+                * Node::from_f64(5.0)
+            + Node::from_f64(7.0);
         println!(
             "\n-------------------------------------\n Printing graph for 4 + (2 * 3 + 4) * 5 + 7"
         );
@@ -230,40 +245,39 @@ mod tests {
 
     #[test]
     fn backward() {
-        let x0 = CellPtr::from_f64(4.0);
-        let x1 = CellPtr::from_f64(2.0);
-        let x2 = CellPtr::from_f64(3.0);
-        let x3 = CellPtr::from_f64(4.0);
-        let x4 = CellPtr::from_f64(5.0);
-        let x5 = CellPtr::from_f64(7.0);
+        let x0 = Node::from_f64(4.0);
+        let x1 = Node::from_f64(2.0);
+        let x2 = Node::from_f64(3.0);
+        let x3 = Node::from_f64(4.0);
+        let x4 = Node::from_f64(5.0);
+        let x5 = Node::from_f64(7.0);
 
-        let mut graph = CellPtr::clone(&x0)
-            + (CellPtr::clone(&x1) * CellPtr::clone(&x2) + CellPtr::clone(&x3))
-                * CellPtr::clone(&x4)
-            + CellPtr::clone(&x5);
+        // Derived Clone impl for Node uses custom Clone impl for CellPtr which takes a reference
+        // using Rc::clone
+        let mut graph =
+            x0.clone() + (x1.clone() * x2.clone() + x3.clone()) * x4.clone() + x5.clone();
         graph.backward(1.0);
         println!("\n-------------------------------------\n visualise after backward()");
         println!("{graph}\n");
 
-        assert_eq!(x0.grad_ref(), 1.0);
-        assert_eq!(x1.grad_ref(), 15.0);
-        assert_eq!(x2.grad_ref(), 10.0);
-        assert_eq!(x3.grad_ref(), 5.0);
-        assert_eq!(x4.grad_ref(), 10.0);
-        assert_eq!(x5.grad_ref(), 1.0);
+        assert_eq!(x0.leaf().unwrap().grad_ref(), 1.0);
+        assert_eq!(x1.leaf().unwrap().grad_ref(), 15.0);
+        assert_eq!(x2.leaf().unwrap().grad_ref(), 10.0);
+        assert_eq!(x3.leaf().unwrap().grad_ref(), 5.0);
+        assert_eq!(x4.leaf().unwrap().grad_ref(), 10.0);
+        assert_eq!(x5.leaf().unwrap().grad_ref(), 1.0);
     }
 
     #[test]
     fn exponentiate_node() {
-        let x0 = CellPtr::from_f64(2.0);
-        let x1 = CellPtr::from_f64(1.0);
+        let x0 = Node::from_f64(2.0);
+        let x1 = Node::from_f64(1.0);
 
-        let mut graph = (CellPtr::clone(&x0) + CellPtr::clone(&x1))
-            .pow_node(CellPtr::from_f64(2.0) + CellPtr::from_f64(1.0));
+        let mut graph = (x0.clone() + x1.clone()).pow(Node::from_f64(2.0) + Node::from_f64(1.0));
         graph.backward(1.0);
         println!("{graph}");
 
-        assert_eq!(x0.grad_ref(), 27.0);
+        assert_eq!(x0.leaf().unwrap().grad_ref(), 27.0);
     }
 
     #[test]
@@ -276,14 +290,14 @@ mod tests {
         // w0 = 8
         // b0 = 4
         // y0 = 1
-        let x0 = CellPtr::from_f64(2.0);
-        let w0 = CellPtr::from_f64(8.0);
-        let b0 = CellPtr::from_f64(4.0);
-        let y0 = CellPtr::from_f64(1.0);
+        let x0 = Node::from_f64(2.0);
+        let w0 = Node::from_f64(8.0);
+        let b0 = Node::from_f64(4.0);
+        let y0 = Node::from_f64(1.0);
 
-        let y_pred0 = CellPtr::clone(&x0) * CellPtr::clone(&w0) + CellPtr::clone(&b0);
+        let y_pred0 = x0.clone() * w0.clone() + b0.clone();
 
-        let mut graph = (y_pred0 - CellPtr::clone(&y0)).pow_val(CellPtr::from_f64(2.0));
+        let mut graph = (y_pred0 - y0.clone()).pow(Node::from_f64(2.0));
         graph.backward(1.0);
         println!("{graph}");
 
@@ -293,8 +307,8 @@ mod tests {
         // d/dw0 = -2 * x0(y0 - (w0 * x0 + b0)) = 76
         // d/db0 = -2 * (y0 - (w0 * x0 + b0)) = 38
 
-        assert_eq!(w0.grad_ref(), 76.0);
-        assert_eq!(b0.grad_ref(), 38.0);
+        assert_eq!(w0.leaf().unwrap().grad_ref(), 76.0);
+        assert_eq!(b0.leaf().unwrap().grad_ref(), 38.0);
     }
 
     #[test]
@@ -303,19 +317,17 @@ mod tests {
         // where:
         // y = 1.0
         // y_pred = 0.9
-        let y_pred = CellPtr::from_f64(0.9);
-        let y = CellPtr::from_f64(1.0);
+        let y_pred = Node::from_f64(0.9);
+        let y = Node::from_f64(1.0);
 
-        let mut e = CellPtr::from_f64(-1.0)
-            * (CellPtr::clone(&y) * (CellPtr::clone(&y_pred) + CellPtr::from_f64(0.0001)).ln()
-                + (CellPtr::from_f64(1.0) - CellPtr::clone(&y))
-                    * (CellPtr::from_f64(1.0)
-                        - (CellPtr::clone(&y_pred) - CellPtr::from_f64(0.0001)))
-                    .ln());
+        let mut e = Node::from_f64(-1.0)
+            * (y.clone() * (y_pred.clone() + Node::from_f64(0.0001)).ln()
+                + (Node::from_f64(1.0) - Node::clone(&y))
+                    * (Node::from_f64(1.0) - (Node::clone(&y_pred) - Node::from_f64(0.0001))).ln());
         println!("{e}");
         e.backward(1.0);
 
-        assert_eq!(y_pred.grad_ref(), bce_prime(1.0, 0.9));
+        assert_eq!(y_pred.leaf().unwrap().grad_ref(), bce_prime(1.0, 0.9));
 
         fn bce_prime(y: f64, y_pred: f64) -> f64 {
             -((y / (y_pred + 0.0001)) + (y - 1.0) / (1.0 - (y_pred - 0.0001)))
