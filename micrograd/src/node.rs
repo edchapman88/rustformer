@@ -142,68 +142,34 @@ impl Node {
     }
     fn backward(&mut self, out_grad: f64) {
         match &mut self.op {
+            NodeOp::Leaf(cellptr) => cellptr.add_grad(out_grad),
             NodeOp::Add(bxd_children) => {
                 let (l_ch, r_ch) = &mut *(*bxd_children);
-                match l_ch {
-                    NodeChild::Leaf(cell) => cell.add_grad(out_grad),
-                    NodeChild::Node(node) => node.backward(out_grad),
-                };
-                match r_ch {
-                    NodeChild::Leaf(cell) => cell.add_grad(out_grad),
-                    NodeChild::Node(node) => node.backward(out_grad),
-                }
+                l_ch.backward(out_grad);
+                r_ch.backward(out_grad);
             }
             NodeOp::Sub(bxd_children) => {
                 let (l_ch, r_ch) = &mut *(*bxd_children);
-                match l_ch {
-                    NodeChild::Leaf(cell) => cell.add_grad(out_grad),
-                    NodeChild::Node(node) => node.backward(out_grad),
-                };
-                match r_ch {
-                    NodeChild::Leaf(cell) => cell.add_grad(-out_grad),
-                    NodeChild::Node(node) => node.backward(-out_grad),
-                }
+                l_ch.backward(-out_grad);
+                r_ch.backward(-out_grad);
             }
             NodeOp::Mul(bxd_children) => {
                 let (l_ch, r_ch) = &mut *(*bxd_children);
-                match l_ch {
-                    NodeChild::Leaf(cell) => cell.add_grad(r_ch.resolve() * out_grad),
-                    NodeChild::Node(node) => node.backward(r_ch.resolve() * out_grad),
-                };
-                match r_ch {
-                    NodeChild::Leaf(cell) => cell.add_grad(l_ch.resolve() * out_grad),
-                    NodeChild::Node(node) => node.backward(l_ch.resolve() * out_grad),
-                };
+                l_ch.backward(r_ch.resolve() * out_grad);
+                r_ch.backward(l_ch.resolve() * out_grad);
             }
             NodeOp::Pow(bxd_children) => {
                 // implicit that r_ch is the exponent
                 let (l_ch, r_ch) = &mut *(*bxd_children);
                 let l_val = l_ch.resolve();
                 let r_val = r_ch.resolve();
-                match l_ch {
-                    NodeChild::Leaf(cell) => {
-                        cell.add_grad(r_val * l_val.powf(r_val - 1.0) * out_grad);
-                    }
-                    NodeChild::Node(node) => {
-                        node.backward(r_val * l_val.powf(r_val - 1.0) * out_grad);
-                    }
-                };
-                match r_ch {
-                    NodeChild::Leaf(cell) => {
-                        cell.add_grad(l_val.powf(r_val) * l_val.ln() * out_grad);
-                    }
-                    NodeChild::Node(node) => {
-                        node.backward(l_val.powf(r_val) * l_val.ln() * out_grad)
-                    }
-                };
+                l_ch.backward(r_val * l_val.powf(r_val - 1.0) * out_grad);
+                r_ch.backward(l_val.powf(r_val) * l_val.ln() * out_grad);
             }
             NodeOp::Ln(bxd_child) => {
                 let child = &mut *(*bxd_child);
                 let child_val = child.resolve();
-                match child {
-                    NodeChild::Leaf(_) => panic!(".ln() not implemented for Value struct"),
-                    NodeChild::Node(node) => node.backward(out_grad / child_val),
-                }
+                child.backward(out_grad / child_val);
             }
         };
     }
