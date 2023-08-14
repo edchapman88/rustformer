@@ -1,10 +1,10 @@
 use std::collections::VecDeque;
 
-use crate::serial::{Layer, LayerError};
+use crate::serial::Layer;
 use matrix_library::{Matrix, MatrixError};
 
-use micrograd::{cell_ptr::CellPtr, node::Node};
-use rand::{distributions::Distribution, thread_rng, Rng};
+use micrograd::node::Node;
+use rand::{distributions::Distribution, thread_rng};
 use statrs::distribution::Normal;
 
 pub struct DenseLayer {
@@ -22,12 +22,12 @@ impl Layer for DenseLayer {
                 x.shape()
             );
         }
-        self.w.matmul(x)
+        Ok(self.w.matmul(x)? + self.b.clone())
     }
 }
 
 impl DenseLayer {
-    pub fn new(input_size: usize, output_size: usize) -> DenseLayer {
+    pub fn new(output_size: usize, input_size: usize) -> DenseLayer {
         let mut rng = thread_rng();
         let norm = Normal::new(0.0, (2.0 / (input_size as f64)).sqrt()).unwrap();
 
@@ -68,12 +68,20 @@ mod tests {
     #[test]
     fn forward() {
         let layer = DenseLayer::new(2, 3);
-        let x_row = VecDeque::from([Node::from_f64(2.0), Node::from_f64(3.0)]);
+        let x_row = VecDeque::from([
+            Node::from_f64(2.0),
+            Node::from_f64(3.0),
+            Node::from_f64(3.0),
+        ]);
         let mut x_vec = VecDeque::new();
         x_vec.push_back(x_row);
         let x = Matrix::new(x_vec).transpose();
 
         let out = layer.forward(&x).unwrap();
-        assert_eq!((3, 1), out.shape());
+        assert_eq!((2, 1), out.shape());
+        let ans = layer.w.at((0, 0)).unwrap().resolve() * x.at((0, 0)).unwrap().resolve()
+            + layer.w.at((0, 1)).unwrap().resolve() * x.at((1, 0)).unwrap().resolve()
+            + layer.w.at((0, 2)).unwrap().resolve() * x.at((2, 0)).unwrap().resolve();
+        assert_eq!(ans, out.at((0, 0)).unwrap().resolve());
     }
 }
