@@ -1,8 +1,4 @@
-use micrograd::{Node, Value};
-use nn::{
-    dense_layer::DenseLayer, optim::OptimSGD, relu_layer::ReluLayer, serial,
-    sigmoid_layer::SigmoidLayer,
-};
+use nn::{dense_layer::DenseLayer, relu_layer::ReluLayer, serial, sigmoid_layer::SigmoidLayer};
 use rand::{seq::SliceRandom, thread_rng, Rng};
 
 #[test]
@@ -21,7 +17,6 @@ fn model_inference() {
     let y = model.forward(&x);
     // println!("{:?}",y);
 }
-
 #[test]
 fn model_learning() {
     let mut model = serial::Serial::new(vec![
