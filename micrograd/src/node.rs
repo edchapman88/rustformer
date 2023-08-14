@@ -165,7 +165,7 @@ impl Node {
             }
             NodeOp::Sub(bxd_children) => {
                 let (l_ch, r_ch) = &mut *(*bxd_children);
-                l_ch.backward(-out_grad);
+                l_ch.backward(out_grad);
                 r_ch.backward(-out_grad);
             }
             NodeOp::Mul(bxd_children) => {
