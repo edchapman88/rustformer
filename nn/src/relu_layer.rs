@@ -1,50 +1,33 @@
-use crate::serial::{Layer, LayerError};
+use std::collections::VecDeque;
 
-pub struct ReluLayer {
-    x: Vec<f64>,
-    pub input_grad: Vec<f64>,
-}
+use crate::serial::Layer;
+use matrix_library::{Matrix, MatrixError};
+use micrograd::node::Node;
+
+pub struct ReluLayer {}
 
 impl Layer for ReluLayer {
-    fn forward(&mut self, x: Vec<f64>) -> Vec<f64> {
-        let mut res = Vec::new();
-        for el in &x {
-            res.push(if *el > 0.0 { *el } else { 0.0 })
+    fn forward(&self, x: &Matrix<Node>) -> Result<Matrix<Node>, MatrixError> {
+        let mut res = VecDeque::new();
+        for j in 0..x.shape().0 {
+            let mut row = VecDeque::new();
+            for i in 0..x.shape().1 {
+                let el = x.at((j, i)).unwrap();
+                if el.resolve() > 0.0 {
+                    row.push_back(el.clone());
+                } else {
+                    row.push_back(Node::from_f64(0.0));
+                }
+            }
+            res.push_back(row);
         }
-        self.x = x;
-        res
-    }
-    fn backward(&mut self, out_grad: Vec<f64>) -> Result<(), LayerError> {
-        let mut input_grad = Vec::new();
-        if self.x.len() == 0 {
-            return Err(LayerError::MissingActivationInputs(String::from(
-                "
-            Either missing a previous call to forward(), or the layer input has zero length",
-            )));
-        }
-        for (i, el) in self.x.iter().enumerate() {
-            input_grad.push(out_grad[i] * if *el > 0.0 { 1.0 } else { 0.0 })
-        }
-        self.input_grad = input_grad;
-        Ok(())
-    }
-    fn update(&mut self, l_rate: f64) {
-        // No hyperparams to update in relu layer.
-    }
-    fn zero_grad(&mut self) {
-        // No hyperparams to update in relu layer.
-    }
-    fn get_input_grad(&self) -> &[f64] {
-        self.input_grad.as_slice()
+        Ok(Matrix::new(res))
     }
 }
 
 impl ReluLayer {
     pub fn new() -> ReluLayer {
-        ReluLayer {
-            x: vec![],
-            input_grad: vec![],
-        }
+        ReluLayer {}
     }
 }
 
@@ -53,16 +36,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn forward_and_backward() {
-        let mut layer = ReluLayer::new();
-        let out = layer.forward(vec![-2.0, 3.0, 0.0, 3.2, -0.5]);
+    fn forward() {
+        let layer = ReluLayer::new();
+        let x_row = VecDeque::from([
+            Node::from_f64(-2.0),
+            Node::from_f64(3.0),
+            Node::from_f64(-3.0),
+        ]);
+        let mut x_vec = VecDeque::new();
+        x_vec.push_back(x_row);
+        let x = Matrix::new(x_vec).transpose();
+        let out = layer.forward(&x).unwrap();
 
         //calc out manually
-        assert_eq!(out, vec![0.0, 3.0, 0.0, 3.2, 0.0]);
-
-        layer
-            .backward(vec![1.0, 2.0, 3.0, 4.0, 5.0])
-            .expect("self.x should be set by call to foreward");
-        assert_eq!(layer.get_input_grad(), &[0.0, 2.0, 0.0, 4.0, 0.0]);
+        assert_eq!(out.at((0, 0)).unwrap().resolve(), 0.0);
+        assert_eq!(out.at((1, 0)).unwrap().resolve(), 3.0);
+        assert_eq!(out.at((2, 0)).unwrap().resolve(), 0.0);
     }
 }

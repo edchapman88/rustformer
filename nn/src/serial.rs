@@ -6,12 +6,6 @@ use crate::dense_layer::DenseLayer;
 pub trait Layer {
     fn forward(&self, x: &Matrix<Node>) -> Result<Matrix<Node>, MatrixError>;
 }
-#[derive(Debug)]
-pub enum LayerError {
-    MissingTree(String),
-    MissingActivationOutputs(String),
-    MissingActivationInputs(String),
-}
 
 pub struct Serial {
     pub layers: Vec<Box<dyn Layer>>,
