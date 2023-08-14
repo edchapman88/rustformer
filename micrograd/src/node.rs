@@ -1,5 +1,5 @@
+use matrix_library::math_utils::{Exp, Pow};
 use std::ops::AddAssign;
-use std::rc::Rc;
 use std::{
     fmt::Display,
     ops::{Add, Mul, Sub},
@@ -230,6 +230,18 @@ impl Node {
 impl Display for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.stringify())
+    }
+}
+
+impl Exp for Node {
+    fn exp(self) -> Self {
+        Node::from_f64(std::f64::consts::E).pow(self)
+    }
+}
+
+impl Pow for Node {
+    fn pow(self, exp: Self) -> Self {
+        self.pow(exp)
     }
 }
 

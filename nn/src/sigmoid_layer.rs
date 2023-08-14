@@ -1,67 +1,51 @@
-use crate::serial::{Layer, LayerError};
+use crate::serial::Layer;
+use matrix_library::math_utils::{Exp, Pow};
+use matrix_library::{Matrix, MatrixError};
+use micrograd::node::Node;
 
-pub struct SigmoidLayer {
-    f_x: Vec<f64>,
-    pub input_grad: Vec<f64>,
-}
+pub struct SigmoidLayer {}
 
 impl Layer for SigmoidLayer {
-    fn forward(&mut self, x: Vec<f64>) -> Vec<f64> {
-        let mut res = Vec::new();
-        for el in &x {
-            res.push(1.0 / (1.0 + (-el).exp()))
-        }
-        self.f_x = res.clone();
-        res
-    }
-    fn backward(&mut self, out_grad: Vec<f64>) -> Result<(), LayerError> {
-        let mut input_grad = Vec::new();
-        if self.f_x.len() == 0 {
-            return Err(LayerError::MissingActivationOutputs(String::from(
-                "
-            Either missing a previous call to forward(), or the layer output has zero length",
-            )));
-        }
-        for (i, fx) in self.f_x.iter().enumerate() {
-            input_grad.push(out_grad[i] * (1.0 - fx) * fx)
-        }
-        self.input_grad = input_grad;
-        Ok(())
-    }
-    fn update(&mut self, l_rate: f64) {
-        // No hyperparams to update in sigmoid layer.
-    }
-    fn zero_grad(&mut self) {
-        // No hyperparams to update in sigmoid layer.
-    }
-    fn get_input_grad(&self) -> &[f64] {
-        self.input_grad.as_slice()
+    fn forward(&self, x: &Matrix<Node>) -> Result<Matrix<Node>, MatrixError> {
+        Ok(
+            ((x.clone() * Node::from_f64(-1.0)).exp() + Node::from_f64(1.0))
+                .pow(Node::from_f64(-1.0)),
+        )
     }
 }
 
 impl SigmoidLayer {
     pub fn new() -> SigmoidLayer {
-        SigmoidLayer {
-            f_x: vec![],
-            input_grad: vec![],
-        }
+        SigmoidLayer {}
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::VecDeque;
+
     use super::*;
 
-    // #[test]
-    // fn forward_and_backward() {
-    //     let mut layer = SigmoidLayer::new();
-    //     let out = layer.forward(vec![-2.0,3.0,0.0]);
+    #[test]
+    fn forward() {
+        let layer = SigmoidLayer::new();
+        let x_row = VecDeque::from([
+            Node::from_f64(2.0),
+            Node::from_f64(-3.0),
+            Node::from_f64(3.0),
+        ]);
+        let mut x_vec = VecDeque::new();
+        x_vec.push_back(x_row);
+        let x = Matrix::new(x_vec).transpose();
+        let out = layer.forward(&x).unwrap();
 
-    //     //calc out manually
-    //     assert_eq!(out, vec![0.11920292202211755,0.9525741268224334,0.5]);
+        // 1 / (1 + e^(-x))
+        let ans = (1.0_f64 + (-2.0_f64).exp()).powf(-1.0_f64);
+        assert_eq!(out.at((0, 0)).unwrap().resolve(), ans);
 
-    //     layer.backward(vec![1.0,2.0,3.0]).expect("self.x should be set by call to foreward");
-    //     assert_eq!(layer.get_input_grad(), &[0.1049935854035065,0.090353319461824,0.75]);
-
-    // }
+        assert_eq!(
+            (out.at((1, 0)).unwrap().resolve() * 100000.0).round(),
+            ((1.0_f64 + (3.0_f64).exp()).powf(-1.0_f64) * 100000.0).round()
+        );
+    }
 }
