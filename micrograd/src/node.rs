@@ -1,3 +1,4 @@
+use std::ops::AddAssign;
 use std::rc::Rc;
 use std::{
     fmt::Display,
@@ -197,6 +198,12 @@ impl Add for Node {
     }
 }
 
+impl AddAssign for Node {
+    fn add_assign(&mut self, rhs: Self) {
+        *self = self.clone() + rhs;
+    }
+}
+
 impl Sub for Node {
     type Output = Node;
     fn sub(self, rhs: Node) -> Self::Output {
@@ -241,6 +248,14 @@ mod tests {
         );
         println!("{graph}\n-------------------------------------\n");
         assert_eq!(graph.resolve(), 61.0);
+    }
+
+    #[test]
+    fn add_assign() {
+        let mut graph = Node::from_f64(2.0) * Node::from_f64(3.0);
+        graph += Node::from_f64(4.0);
+        println!("{}", graph);
+        assert_eq!(10.0, graph.resolve());
     }
 
     #[test]
@@ -324,9 +339,8 @@ mod tests {
             * (y.clone() * (y_pred.clone() + Node::from_f64(0.0001)).ln()
                 + (Node::from_f64(1.0) - Node::clone(&y))
                     * (Node::from_f64(1.0) - (Node::clone(&y_pred) - Node::from_f64(0.0001))).ln());
-        println!("{e}");
         e.backward(1.0);
-
+        println!("{e}");
         assert_eq!(y_pred.leaf().unwrap().grad_ref(), bce_prime(1.0, 0.9));
 
         fn bce_prime(y: f64, y_pred: f64) -> f64 {
