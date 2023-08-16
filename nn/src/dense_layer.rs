@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use crate::serial::Layer;
 use matrix_library::{Matrix, MatrixError};
 
-use micrograd::node::Node;
+use micrograd::{cell_ptr::CellPtr, node::Node};
 use rand::{distributions::Distribution, thread_rng};
 use statrs::distribution::Normal;
 
@@ -23,6 +23,28 @@ impl Layer for DenseLayer {
             );
         }
         Ok(self.w.matmul(x)? + self.b.clone())
+    }
+
+    fn params(&self) -> Vec<CellPtr> {
+        let mut v: Vec<CellPtr> = Vec::new();
+        // note: below calls to clone are Rc::clone() under the hood, so low memory cost
+        v.append(
+            self.w
+                .clone()
+                .into_iter()
+                .map(|node| node.leaf().expect("all layer params are leaves").clone())
+                .collect::<Vec<CellPtr>>()
+                .as_mut(),
+        );
+        v.append(
+            self.w
+                .clone()
+                .into_iter()
+                .map(|node| node.leaf().expect("all layer params are leaves").clone())
+                .collect::<Vec<CellPtr>>()
+                .as_mut(),
+        );
+        v
     }
 }
 
@@ -83,5 +105,10 @@ mod tests {
             + layer.w.at((0, 1)).unwrap().resolve() * x.at((1, 0)).unwrap().resolve()
             + layer.w.at((0, 2)).unwrap().resolve() * x.at((2, 0)).unwrap().resolve();
         assert_eq!(ans, out.at((0, 0)).unwrap().resolve());
+
+        let ans_2 = layer.w.at((1, 0)).unwrap().resolve() * x.at((0, 0)).unwrap().resolve()
+            + layer.w.at((1, 1)).unwrap().resolve() * x.at((1, 0)).unwrap().resolve()
+            + layer.w.at((1, 2)).unwrap().resolve() * x.at((2, 0)).unwrap().resolve();
+        assert_eq!(ans_2, out.at((1, 0)).unwrap().resolve());
     }
 }

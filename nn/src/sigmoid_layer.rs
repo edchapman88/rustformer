@@ -1,6 +1,7 @@
 use crate::serial::Layer;
 use matrix_library::math_utils::{Exp, Pow};
 use matrix_library::{Matrix, MatrixError};
+use micrograd::cell_ptr::CellPtr;
 use micrograd::node::Node;
 
 pub struct SigmoidLayer {}
@@ -11,6 +12,9 @@ impl Layer for SigmoidLayer {
             ((x.clone() * Node::from_f64(-1.0)).exp() + Node::from_f64(1.0))
                 .pow(Node::from_f64(-1.0)),
         )
+    }
+    fn params(&self) -> Vec<CellPtr> {
+        vec![]
     }
 }
 

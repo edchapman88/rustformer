@@ -5,7 +5,7 @@ use std::{
     ops::{Add, Mul, Sub},
 };
 
-use crate::cell_ptr::{Cell, CellPtr};
+use crate::cell_ptr::CellPtr;
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct Node {
@@ -42,15 +42,6 @@ impl Node {
             None
         }
     }
-
-    // pub fn placeHolder() -> Node {
-    //     Node {
-    //         op: NodeOp::Ln(Box::new(NodeChild::Leaf(CellPtr::new(Rc::new(Cell::new(
-    //             0.0,
-    //         )))))),
-    //         label: String::from("dummy"),
-    //     }
-    // }
 
     pub fn stringify(&self) -> String {
         // let mut res = String::from("\n     ");
@@ -156,7 +147,7 @@ impl Node {
             NodeOp::Ln(_) => panic!("handled with early return from previous match"),
         }
     }
-    fn backward(&mut self, out_grad: f64) {
+    pub fn backward(&mut self, out_grad: f64) {
         match &mut self.op {
             NodeOp::Leaf(cellptr) => cellptr.add_grad(out_grad),
             NodeOp::Add(bxd_children) => {
@@ -188,6 +179,24 @@ impl Node {
                 child.backward(out_grad / child_val);
             }
         };
+    }
+
+    pub fn zero_grad(&self) {
+        match &self.op {
+            NodeOp::Leaf(cellptr) => cellptr.zero_grad(),
+            NodeOp::Add(bxd_children)
+            | NodeOp::Sub(bxd_children)
+            | NodeOp::Mul(bxd_children)
+            | NodeOp::Pow(bxd_children) => {
+                let (l_ch, r_ch) = &*(*bxd_children);
+                l_ch.zero_grad();
+                r_ch.zero_grad();
+            }
+            NodeOp::Ln(bxd_child) => {
+                let child = &*(*bxd_child);
+                child.zero_grad();
+            }
+        }
     }
 }
 
@@ -247,6 +256,8 @@ impl Pow for Node {
 
 #[cfg(test)]
 mod tests {
+    use matrix_library::Matrix;
+
     use super::*;
 
     #[test]
@@ -293,6 +304,22 @@ mod tests {
         assert_eq!(x3.leaf().unwrap().grad_ref(), 5.0);
         assert_eq!(x4.leaf().unwrap().grad_ref(), 10.0);
         assert_eq!(x5.leaf().unwrap().grad_ref(), 1.0);
+    }
+
+    #[test]
+    fn backward_two_graphs_seperately() {
+        let x = Node::from_f64(3.0);
+        let four = Node::from_f64(4.0);
+        let five = Node::from_f64(5.0);
+        let two = Node::from_f64(2.0);
+
+        let mut graph1 = x.clone() * (five.clone() * two.clone()) + two.clone();
+        let mut graph2 = x.clone() * (two.clone() + two.clone()) * two.clone();
+
+        graph1.backward(1.0);
+        assert_eq!(x.leaf().unwrap().grad_ref(), 10.0);
+        graph2.backward(1.0);
+        assert_eq!(x.leaf().unwrap().grad_ref(), 10.0 + 8.0);
     }
 
     #[test]
@@ -358,5 +385,14 @@ mod tests {
         fn bce_prime(y: f64, y_pred: f64) -> f64 {
             -((y / (y_pred + 0.0001)) + (y - 1.0) / (1.0 - (y_pred - 0.0001)))
         }
+    }
+
+    #[test]
+    fn matrix_clone() {
+        let a = Matrix::fill((2, 2), Node::from_f64(0.0));
+        let b = a.clone();
+        b.at((0, 0)).unwrap().leaf().unwrap().add_data(1.0);
+        println!("{:?}", b.at((1, 1)).unwrap().leaf().unwrap().resolve());
+        println!("{:?}", a.at((0, 0)).unwrap().leaf().unwrap().resolve());
     }
 }

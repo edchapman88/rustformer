@@ -38,6 +38,12 @@ impl CellPtr {
     pub fn add_grad(&self, g: f64) {
         self.ptr.val.borrow_mut().grad += g
     }
+    pub fn add_data(&self, delta: f64) {
+        self.ptr.val.borrow_mut().data += delta
+    }
+    pub fn zero_grad(&self) {
+        self.ptr.val.borrow_mut().grad = 0.0
+    }
 }
 
 impl Clone for CellPtr {

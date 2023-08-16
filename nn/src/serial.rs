@@ -1,10 +1,9 @@
 use matrix_library::{Matrix, MatrixError};
-use micrograd::node::Node;
-
-use crate::dense_layer::DenseLayer;
+use micrograd::{cell_ptr::CellPtr, node::Node};
 
 pub trait Layer {
     fn forward(&self, x: &Matrix<Node>) -> Result<Matrix<Node>, MatrixError>;
+    fn params(&self) -> Vec<CellPtr>;
 }
 
 pub struct Serial {
@@ -24,5 +23,16 @@ impl Serial {
             tmp = &y;
         }
         Ok(y)
+    }
+
+    pub fn params(&self) -> Vec<CellPtr> {
+        self.layers
+            .iter()
+            .map(|l| l.as_ref().params())
+            .reduce(|mut acc, mut params| {
+                acc.append(&mut params);
+                acc
+            })
+            .expect("expect at least one parameter in the model")
     }
 }

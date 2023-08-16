@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use crate::serial::Layer;
 use matrix_library::{Matrix, MatrixError};
-use micrograd::node::Node;
+use micrograd::{cell_ptr::CellPtr, node::Node};
 
 pub struct ReluLayer {}
 
@@ -22,6 +22,10 @@ impl Layer for ReluLayer {
             res.push_back(row);
         }
         Ok(Matrix::new(res))
+    }
+
+    fn params(&self) -> Vec<CellPtr> {
+        vec![]
     }
 }
 
