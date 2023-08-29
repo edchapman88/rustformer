@@ -238,7 +238,7 @@ impl Node {
 
 impl Display for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.stringify())
+        write!(f, "{}", self.resolve())
     }
 }
 
@@ -269,7 +269,10 @@ mod tests {
         println!(
             "\n-------------------------------------\n Printing graph for 4 + (2 * 3 + 4) * 5 + 7"
         );
-        println!("{graph}\n-------------------------------------\n");
+        println!(
+            "{}\n-------------------------------------\n",
+            graph.stringify()
+        );
         assert_eq!(graph.resolve(), 61.0);
     }
 
@@ -277,7 +280,7 @@ mod tests {
     fn add_assign() {
         let mut graph = Node::from_f64(2.0) * Node::from_f64(3.0);
         graph += Node::from_f64(4.0);
-        println!("{}", graph);
+        println!("{}", graph.stringify());
         assert_eq!(10.0, graph.resolve());
     }
 
@@ -296,7 +299,7 @@ mod tests {
             x0.clone() + (x1.clone() * x2.clone() + x3.clone()) * x4.clone() + x5.clone();
         graph.backward(1.0);
         println!("\n-------------------------------------\n visualise after backward()");
-        println!("{graph}\n");
+        println!("{}\n", graph.stringify());
 
         assert_eq!(x0.leaf().unwrap().grad_ref(), 1.0);
         assert_eq!(x1.leaf().unwrap().grad_ref(), 15.0);
@@ -307,9 +310,18 @@ mod tests {
     }
 
     #[test]
+    fn zero_grad() {
+        let x = Node::from_f64(3.2);
+        let mut graph = (x.clone() + Node::from_f64(2.2)).pow(Node::from_f64(3.0).ln());
+        graph.backward(1.0);
+        assert_ne!(0.0, x.leaf().unwrap().grad_ref());
+        graph.zero_grad();
+        assert_eq!(0.0, x.leaf().unwrap().grad_ref());
+    }
+
+    #[test]
     fn backward_two_graphs_seperately() {
         let x = Node::from_f64(3.0);
-        let four = Node::from_f64(4.0);
         let five = Node::from_f64(5.0);
         let two = Node::from_f64(2.0);
 
@@ -329,9 +341,39 @@ mod tests {
 
         let mut graph = (x0.clone() + x1.clone()).pow(Node::from_f64(2.0) + Node::from_f64(1.0));
         graph.backward(1.0);
-        println!("{graph}");
+        println!("{}", graph.stringify());
 
         assert_eq!(x0.leaf().unwrap().grad_ref(), 27.0);
+    }
+
+    #[test]
+    fn exponent_node() {
+        let x0 = Node::from_f64(4.0);
+
+        let mut graph = (Node::from_f64(3.0)).pow(Node::from_f64(3.0) - x0.clone());
+        graph.backward(1.0);
+        println!("{}", graph.stringify());
+
+        // d/dx(3^(3-x)) = -3^(3-x) * ln(3)
+        assert_eq!(
+            x0.leaf().unwrap().grad_ref(),
+            -(3.0_f64.powf(3.0 - 4.0)) * 3.0_f64.ln()
+        );
+    }
+
+    #[test]
+    fn raise_e_to_node() {
+        let x0 = Node::from_f64(4.0);
+
+        let mut graph = (Node::from_f64(3.0) - x0.clone()).exp();
+        graph.backward(1.0);
+        println!("{}", graph.stringify());
+
+        // d/dx(e^(3-x)) = -e^(3-x)
+        assert_eq!(
+            x0.leaf().unwrap().grad_ref(),
+            -(std::f64::consts::E.powf(3.0 - 4.0))
+        );
     }
 
     #[test]
@@ -353,7 +395,7 @@ mod tests {
 
         let mut graph = (y_pred0 - y0.clone()).pow(Node::from_f64(2.0));
         graph.backward(1.0);
-        println!("{graph}");
+        println!("{}", graph.stringify());
 
         // d/dw = 1/n sum( -2 * x_i(y_i - (w_i * x_i - b_i)) )
         // d/db = 1/n sum( -2 * (y_i - (w_i * x_i - b_i)) )
@@ -389,10 +431,14 @@ mod tests {
 
     #[test]
     fn matrix_clone() {
+        // ::fill() calls clone on the passed value to fill the matrix
         let a = Matrix::fill((2, 2), Node::from_f64(0.0));
+        // since clone() is overridden for Node, now both "a" and "b" are filled with references to
+        // the same Node (the Node passed in to the original ::fill() method)
         let b = a.clone();
         b.at((0, 0)).unwrap().leaf().unwrap().add_data(1.0);
-        println!("{:?}", b.at((1, 1)).unwrap().leaf().unwrap().resolve());
-        println!("{:?}", a.at((0, 0)).unwrap().leaf().unwrap().resolve());
+        println! {"{}",b};
+        assert_eq!(1.0, b.at((1, 1)).unwrap().leaf().unwrap().resolve());
+        assert_eq!(1.0, a.at((1, 1)).unwrap().leaf().unwrap().resolve());
     }
 }

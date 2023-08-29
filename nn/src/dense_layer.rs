@@ -37,7 +37,7 @@ impl Layer for DenseLayer {
                 .as_mut(),
         );
         v.append(
-            self.w
+            self.b
                 .clone()
                 .into_iter()
                 .map(|node| node.leaf().expect("all layer params are leaves").clone())
@@ -51,6 +51,8 @@ impl Layer for DenseLayer {
 impl DenseLayer {
     pub fn new(output_size: usize, input_size: usize) -> DenseLayer {
         let mut rng = thread_rng();
+        // He weight initialisation (performs well with ReLu)
+        // https://arxiv.org/abs/1502.01852
         let norm = Normal::new(0.0, (2.0 / (input_size as f64)).sqrt()).unwrap();
 
         let mut w = VecDeque::new();

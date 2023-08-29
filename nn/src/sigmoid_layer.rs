@@ -37,6 +37,8 @@ mod tests {
             Node::from_f64(2.0),
             Node::from_f64(-3.0),
             Node::from_f64(3.0),
+            Node::from_f64(-30.0),
+            Node::from_f64(30.0),
         ]);
         let mut x_vec = VecDeque::new();
         x_vec.push_back(x_row);
@@ -51,5 +53,6 @@ mod tests {
             (out.at((1, 0)).unwrap().resolve() * 100000.0).round(),
             ((1.0_f64 + (3.0_f64).exp()).powf(-1.0_f64) * 100000.0).round()
         );
+        println!("{:?}", out.map(|x| x.resolve()).collect::<Vec<f64>>());
     }
 }

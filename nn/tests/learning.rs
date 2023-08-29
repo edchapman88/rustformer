@@ -24,22 +24,18 @@ fn model_inference() {
 fn model_learning() {
     let mut rng = thread_rng();
     let model = serial::Serial::new(vec![
-        Box::new(DenseLayer::new(5, 2)),
+        Box::new(DenseLayer::new(4, 2)),
         Box::new(ReluLayer::new()),
-        Box::new(DenseLayer::new(5, 5)),
+        Box::new(DenseLayer::new(4, 4)),
         Box::new(ReluLayer::new()),
-        Box::new(DenseLayer::new(5, 5)),
-        Box::new(ReluLayer::new()),
-        Box::new(DenseLayer::new(3, 5)),
-        Box::new(ReluLayer::new()),
-        Box::new(DenseLayer::new(1, 3)),
+        Box::new(DenseLayer::new(1, 4)),
         Box::new(SigmoidLayer::new()),
     ]);
 
     let params = model.params();
 
-    let max_itr = 10000;
-    let optim = OptimSGD::new(0.5, max_itr, params);
+    let max_itr = 20000;
+    let optim = OptimSGD::new(0.04, max_itr, params);
 
     let xor: Vec<(Matrix<Node>, Matrix<Node>)> = vec![
         (
@@ -59,96 +55,68 @@ fn model_learning() {
             Matrix::from_vecs(vec![vec![Node::from_f64(0.0)]]),
         ),
     ];
-    // let mut e_log = String::new();
     for itr in 0..max_itr {
         let sample = xor.choose(&mut rng);
         let (xi, yi) = sample.unwrap();
 
         let y_pred = model.forward(xi).unwrap();
-        // println!("pred: {:?}", y_pred.at((0, 0)).unwrap().resolve());
+
         let mut e = bce(
             yi.at((0, 0)).unwrap().clone(),
             y_pred.at((0, 0)).unwrap().clone(),
         );
-        if itr % 100 == 0 {
+
+        // also tested with mse for comparison
+        // let mut e = mse(
+        //     yi.at((0, 0)).unwrap().clone(),
+        //     y_pred.at((0, 0)).unwrap().clone(),
+        // );
+
+        if itr % 80 == 0 {
             let e_val = e.resolve();
             println!("{:?}", e_val);
-            // if e_val > 0.01 {
-            //     println!(
-            //         "{},{}",
-            //         xi.at((0, 0)).unwrap().resolve(),
-            //         xi.at((1, 0)).unwrap().resolve()
-            //     );
-            // }
         }
-        // println!("{:?}", e.resolve());
-        // e_log += &e.resolve().to_string();
-        // e_log += "\n";
-        // println!(
-        //     "{:?}",
-        //     model
-        //         .params()
-        //         .iter()
-        //         .map(|p| p.data_ref())
-        //         .collect::<Vec<f64>>()[1]
-        // );
+
         e.zero_grad();
-        // println!("{}", e);
-        // if itr % 10 == 0 {
-        //     println!(
-        //         "{:?}",
-        //         model
-        //             .params()
-        //             .iter()
-        //             .map(|p| p.grad_ref())
-        //             .collect::<Vec<f64>>()[1]
-        //     );
-        // }
-        // println!("___________________");
-        e.backward(e.resolve());
-        // println!("{}", e);
-        // if itr % 10 == 0 {
-        //     println!(
-        //         "{:?}",
-        //         model
-        //             .params()
-        //             .iter()
-        //             .map(|p| p.grad_ref())
-        //             .collect::<Vec<f64>>()[1]
-        //     );
-        // }
-        // println!("_________nudge data__________");
+        e.backward(1.0);
         optim.update(itr);
-        // println!("{}", e);
-        // println!("_________next__________");
     }
-    // println!("{}", e_log);
+
     for (xi, yi) in xor.iter() {
+        let y_true = yi.at((0, 0)).unwrap();
         println!(
             "{:?} -> true: {}",
             (
                 xi.at((0, 0)).unwrap().resolve(),
                 xi.at((1, 0)).unwrap().resolve()
             ),
-            yi.at((0, 0)).unwrap().resolve()
+            y_true.resolve()
         );
+        let y_pred = model.forward(&xi).unwrap().at((0, 0)).unwrap().clone();
         println!(
             "{:?} -> pred: {}",
             (
                 xi.at((0, 0)).unwrap().resolve(),
                 xi.at((1, 0)).unwrap().resolve()
             ),
-            model.forward(&xi).unwrap().at((0, 0)).unwrap().resolve()
+            y_pred.resolve()
         );
+
+        // require accuracy below a tolerance
+        assert!(mse(y_true.clone(), y_pred).resolve() < 0.01);
     }
 }
 
 fn bce(y: Node, y_pred: Node) -> Node {
     // -1 * [ y * (y_pred + 0.0001).ln()    +    (1 - y) * (1 - (y_pred - 0.0001)).ln() ]
+    Node::from_f64(-1.0)
+        * (y.clone() * (y_pred.clone() + Node::from_f64(0.0000001)).ln()
+            + (Node::from_f64(1.0) - y)
+                * (Node::from_f64(1.0) - (y_pred - Node::from_f64(0.0000001))).ln())
+}
 
-    y.clone() * (y_pred.clone() + Node::from_f64(0.0000001)).ln()
-        + (Node::from_f64(1.0) - y)
-            * (Node::from_f64(1.0) - (y_pred - Node::from_f64(0.0000001))).ln()
+fn mse(y: Node, y_pred: Node) -> Node {
+    (y - y_pred).pow(Node::from_f64(2.0))
 }
 
 // fn binary_x_entropy(y: &Vec<Vec<f64>>, y_pred: &Vec<Vec<f64>>) -> Vec<f64> {
