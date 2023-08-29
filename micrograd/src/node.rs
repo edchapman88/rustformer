@@ -1,4 +1,5 @@
 use matrix_library::math_utils::{Exp, Pow};
+use matrix_library::Matrix;
 use std::ops::AddAssign;
 use std::{
     fmt::Display,
@@ -33,6 +34,22 @@ impl Node {
             op: NodeOp::Leaf(CellPtr::new(data)),
             label: '#'.to_string(),
         }
+    }
+
+    /// Fill a matrix with new Nodes (references to new data).
+    /// Behaves differently to `Matrix::fill()` which clones the provided element - in the case where
+    /// the element in a `Node`, the clone call creates a matrix of references to the Node provided as
+    /// an argument to the function.
+    pub fn fill_matrix_f64(shape: (usize, usize), data: f64) -> Matrix<Node> {
+        let mut matrix = Vec::new();
+        for _ in 0..shape.0 {
+            let mut row = Vec::new();
+            for _ in 0..shape.1 {
+                row.push(Node::from_f64(data));
+            }
+            matrix.push(row);
+        }
+        Matrix::from_vecs(matrix)
     }
 
     pub fn leaf(&self) -> Option<&CellPtr> {
