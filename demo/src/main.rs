@@ -1,10 +1,11 @@
 use rand::prelude::Distribution;
-use rand::{distributions::WeightedIndex, thread_rng, Rng};
+use rand::{distributions::WeightedIndex, Rng};
 use std::collections::{HashMap, HashSet};
 use std::{fs, path::Path};
 
 use transformer::model::Transformer;
 fn main() {
+    let seed = 1;
     // load in data and prepare
     let txt = fs::read_to_string(
         Path::new(std::env::var("CARGO_WORKSPACE_DIR").unwrap().as_str())
@@ -50,6 +51,7 @@ fn main() {
         data: Vec<usize>,
         batch_size: usize,
         block_size: usize,
+        seed: Option<u64>,
     ) -> (Vec<Vec<usize>>, Vec<Vec<usize>>) {
         // each x sample in the batch contains block_size (eg. = 4) items eg. [x1,x2,x3,x4]
         // and that sample contains 4 training samples or different length,
@@ -59,7 +61,12 @@ fn main() {
         // x1,x2,x3 -> y3(=x4)
         // x1,x2,x3,x4 -> y4(=x5)
         // this is a more space efficient way of storing samples (avoiding data duplication)
-        let mut rng = rand::thread_rng();
+        let mut rng = if let Some(seed_n) = seed {
+            ChaCha8Rng::seed_from_u64(seed_n)
+        } else {
+            ChaCha8Rng::from_entropy()
+        };
+
         let mut x = Vec::new();
         let mut y = Vec::new();
         for _ in 0..batch_size {
@@ -72,14 +79,21 @@ fn main() {
 
     // println!("{:?}", chars);
 
-    let (x_batch, y_batch) = get_batch(charidxs, batch_size, block_size);
+    let (x_batch, y_batch) = get_batch(charidxs, batch_size, block_size, Some(seed));
     let x_batch = vec![vec![0, 1, 2]];
     let y_batch = vec![vec![0, 0, 0]];
     // println!("x = {:?}", x_batch);
     // println!("y = {:?}", y_batch);
 
     let mut transformer = Transformer::new(
-        vocab_size, n_embd, block_size, n_layers, n_heads, head_size, batch_size,
+        vocab_size,
+        n_embd,
+        block_size,
+        n_layers,
+        n_heads,
+        head_size,
+        batch_size,
+        Some(seed),
     );
 
     let (logits_batch, loss) = transformer.forward(&x_batch, Some(&y_batch)); // (B,T,vocab_size)

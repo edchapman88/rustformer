@@ -1,15 +1,22 @@
-use std::fmt::Display;
-
 use matrix_library::{Matrix, MatrixError};
 use micrograd::node::Node;
-use rand::{distributions::Distribution, rngs::ThreadRng};
+use rand::distributions::Distribution;
+use rand::SeedableRng;
+use rand_chacha::ChaCha8Rng;
 use statrs::distribution::Normal;
+use std::fmt::Display;
 pub struct EmbeddingTable {
     table: Matrix<Node>,
 }
 
 impl EmbeddingTable {
-    pub fn new(vocab_size: usize, emb_dim: usize, mut rng: &mut ThreadRng) -> EmbeddingTable {
+    pub fn new(vocab_size: usize, emb_dim: usize, seed: Option<u64>) -> EmbeddingTable {
+        let mut rng = if let Some(seed_n) = seed {
+            ChaCha8Rng::seed_from_u64(seed_n)
+        } else {
+            ChaCha8Rng::from_entropy()
+        };
+
         let mut table = Vec::new();
         let norm = Normal::new(0.0, 1.0).unwrap();
         for _ in 0..vocab_size {
@@ -24,7 +31,7 @@ impl EmbeddingTable {
         }
     }
 
-    /// Retrieve a batch of embeddings
+    /// Retrieve a set of embeddings
     pub fn embs(&self, x: Matrix<Node>) -> Result<Matrix<Node>, MatrixError> {
         if x.shape().1 != self.table.shape().0 {
             return Err(MatrixError::DimMismatch(x.shape(), self.table.shape()));
@@ -54,17 +61,15 @@ impl Display for EmbeddingTableError {
 
 #[cfg(test)]
 mod tests {
-    use rand::thread_rng;
-
     use super::*;
 
     #[test]
     fn retrieve_embs() {
-        let mut rng = thread_rng();
-        let tab = EmbeddingTable::new(3, 1, &mut rng);
+        let seed = 1;
+        let tab = EmbeddingTable::new(3, 1, Some(seed));
 
-        // (batch_size, vocab_size)
-        // batch of 2 one hot vectors
+        // (number of embeds, vocab_size)
+        // set of 2 one hot vectors
         let mut x = Node::fill_matrix_f64((2, 3), 0.0);
         x.at_mut((0, 0)).unwrap().leaf().unwrap().add_data(1.0);
         x.at_mut((1, 1)).unwrap().leaf().unwrap().add_data(1.0);
@@ -73,12 +78,12 @@ mod tests {
         let embs = tab.embs(x).unwrap();
         println!("{}", embs);
         println!("{}", tab.table);
-        // first batch element
+        // first embed in set
         assert_eq!(
             embs.at((0, 0)).unwrap().resolve(),
             tab.at((0, 0)).unwrap().resolve()
         );
-        // second batch element
+        // second embed in set
         assert_eq!(
             embs.at((1, 0)).unwrap().resolve(),
             tab.at((1, 0)).unwrap().resolve()

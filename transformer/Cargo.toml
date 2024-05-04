@@ -10,3 +10,4 @@ micrograd = { path = "../micrograd" }
 nn = { path = "../nn" }
 matrix_library = { path = "../../matrix_library" }
 rand = "0.8.5"
+rand_chacha = "0.3.1"
