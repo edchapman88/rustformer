@@ -4,7 +4,7 @@ use nn::{
     dense_layer::DenseLayer, optim::OptimSGD, relu_layer::ReluLayer, serial,
     sigmoid_layer::SigmoidLayer,
 };
-use rand::{seq::SliceRandom, thread_rng, SeedableRng};
+use rand::{seq::SliceRandom, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
 #[test]
@@ -122,20 +122,3 @@ fn bce(y: Node, y_pred: Node) -> Node {
 fn mse(y: Node, y_pred: Node) -> Node {
     (y - y_pred).pow(Node::from_f64(2.0))
 }
-
-// fn binary_x_entropy(y: &Vec<Vec<f64>>, y_pred: &Vec<Vec<f64>>) -> Vec<f64> {
-//     // TODO: refactor to be auto-differentiable (see bce)
-//     let batch_size = y.len();
-//     let y_len = y[0].len();
-//     let mut mean_loss = vec![0.0; y[0].len()];
-//     for s in 0..batch_size {
-//         for i in 0..y_len {
-//             mean_loss[i] +=
-//                 (y[s][i] * y_pred[s][i].ln() + (1.0 - y[s][i]) * (1.0 - y_pred[s][i]).ln())
-//         }
-//     }
-//     for el in &mut mean_loss {
-//         *el /= -1.0 * batch_size as f64;
-//     }
-//     mean_loss
-// }
