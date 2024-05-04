@@ -38,7 +38,7 @@ impl Node {
 
     /// Fill a matrix with new Nodes (references to new data).
     /// Behaves differently to `Matrix::fill()` which clones the provided element - in the case where
-    /// the element in a `Node`, the clone call creates a matrix of references to the Node provided as
+    /// the element is a `Node`, the clone call creates a matrix of references to the Node provided as
     /// an argument to the function.
     pub fn fill_matrix_f64(shape: (usize, usize), data: f64) -> Matrix<Node> {
         let mut matrix = Vec::new();
