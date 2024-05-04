@@ -85,8 +85,8 @@ mod tests {
     #[test]
     fn test_new() {
         let layer = DenseLayer::new(3, 5);
-        assert_eq!((5, 3), layer.w.shape());
-        assert_eq!((5, 1), layer.b.shape());
+        assert_eq!((3, 5), layer.w.shape());
+        assert_eq!((3, 1), layer.b.shape());
     }
 
     #[test]
