@@ -1,11 +1,11 @@
-use std::collections::VecDeque;
-
 use crate::serial::Layer;
 use matrix_library::{Matrix, MatrixError};
-
 use micrograd::{cell_ptr::CellPtr, node::Node};
-use rand::{distributions::Distribution, thread_rng};
+use rand::distributions::Distribution;
+use rand::SeedableRng;
+use rand_chacha::ChaCha8Rng;
 use statrs::distribution::Normal;
+use std::collections::VecDeque;
 
 pub struct DenseLayer {
     pub i_size: usize,
@@ -49,8 +49,12 @@ impl Layer for DenseLayer {
 }
 
 impl DenseLayer {
-    pub fn new(output_size: usize, input_size: usize) -> DenseLayer {
-        let mut rng = thread_rng();
+    pub fn new(output_size: usize, input_size: usize, seed: Option<u64>) -> DenseLayer {
+        let mut rng = if let Some(seed_n) = seed {
+            ChaCha8Rng::seed_from_u64(seed_n)
+        } else {
+            ChaCha8Rng::from_entropy()
+        };
         // He weight initialisation (performs well with ReLu)
         // https://arxiv.org/abs/1502.01852
         let norm = Normal::new(0.0, (2.0 / (input_size as f64)).sqrt()).unwrap();
@@ -84,14 +88,14 @@ mod tests {
 
     #[test]
     fn test_new() {
-        let layer = DenseLayer::new(3, 5);
+        let layer = DenseLayer::new(3, 5, None);
         assert_eq!((3, 5), layer.w.shape());
         assert_eq!((3, 1), layer.b.shape());
     }
 
     #[test]
     fn forward() {
-        let layer = DenseLayer::new(2, 3);
+        let layer = DenseLayer::new(2, 3, None);
         let x_row = VecDeque::from([
             Node::from_f64(2.0),
             Node::from_f64(3.0),

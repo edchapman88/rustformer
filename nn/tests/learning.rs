@@ -4,14 +4,15 @@ use nn::{
     dense_layer::DenseLayer, optim::OptimSGD, relu_layer::ReluLayer, serial,
     sigmoid_layer::SigmoidLayer,
 };
-use rand::{seq::SliceRandom, thread_rng};
+use rand::{seq::SliceRandom, thread_rng, SeedableRng};
+use rand_chacha::ChaCha8Rng;
 
 #[test]
 fn model_inference() {
     let model = serial::Serial::new(vec![
-        Box::new(DenseLayer::new(2, 5)),
+        Box::new(DenseLayer::new(2, 5, None)),
         Box::new(ReluLayer::new()),
-        Box::new(DenseLayer::new(1, 2)),
+        Box::new(DenseLayer::new(1, 2, None)),
         Box::new(SigmoidLayer::new()),
     ]);
     let x = Matrix::fill((5, 1), Node::from_f64(1.0));
@@ -22,13 +23,16 @@ fn model_inference() {
 
 #[test]
 fn model_learning() {
-    let mut rng = thread_rng();
+    let seed_n = 2;
+    let mut rng = ChaCha8Rng::seed_from_u64(seed_n);
     let model = serial::Serial::new(vec![
-        Box::new(DenseLayer::new(4, 2)),
+        Box::new(DenseLayer::new(5, 2, Some(seed_n))),
         Box::new(ReluLayer::new()),
-        Box::new(DenseLayer::new(4, 4)),
+        Box::new(DenseLayer::new(10, 5, Some(seed_n))),
         Box::new(ReluLayer::new()),
-        Box::new(DenseLayer::new(1, 4)),
+        Box::new(DenseLayer::new(5, 10, Some(seed_n))),
+        Box::new(ReluLayer::new()),
+        Box::new(DenseLayer::new(1, 5, Some(seed_n))),
         Box::new(SigmoidLayer::new()),
     ]);
 
