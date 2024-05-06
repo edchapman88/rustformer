@@ -1,6 +1,6 @@
 use matrix_library::math_utils::{Exp, Pow};
 use matrix_library::Matrix;
-use std::ops::AddAssign;
+use std::ops::{AddAssign, Div};
 use std::{
     fmt::Display,
     ops::{Add, Mul, Sub},
@@ -268,6 +268,13 @@ impl Exp for Node {
 impl Pow for Node {
     fn pow(self, exp: Self) -> Self {
         self.pow(exp)
+    }
+}
+
+impl Div for Node {
+    type Output = Node;
+    fn div(self, rhs: Self) -> Self::Output {
+        self * rhs.pow(Node::from_f64(-1.0))
     }
 }
 
