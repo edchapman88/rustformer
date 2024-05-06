@@ -7,5 +7,7 @@ edition = "2021"
 
 [dependencies]
 transformer = { path = "../transformer" }
+matrix_library = { path = "../../matrix_library" }
 nn = { path = "../nn" }
 rand = "0.8.5"
+rand_chacha = "0.3.1"

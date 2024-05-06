@@ -1,5 +1,7 @@
-use rand::prelude::Distribution;
-use rand::{distributions::WeightedIndex, Rng};
+use matrix_library::Matrix;
+use rand::Rng;
+use rand::SeedableRng;
+use rand_chacha::ChaCha8Rng;
 use std::collections::{HashMap, HashSet};
 use std::{fs, path::Path};
 
@@ -38,10 +40,9 @@ fn main() {
     }
 
     // let vocab_size = chars.len();
-    let vocab_size = 3;
+    let vocab_size = 17;
     let n_embd = 5;
-    // let block_size = 8;
-    let block_size = 3;
+    let block_size = 8;
     let n_layers = 1;
     let n_heads = 1;
     let batch_size = 1;
@@ -52,7 +53,7 @@ fn main() {
         batch_size: usize,
         block_size: usize,
         seed: Option<u64>,
-    ) -> (Vec<Vec<usize>>, Vec<Vec<usize>>) {
+    ) -> (Matrix<usize>, Matrix<usize>) {
         // each x sample in the batch contains block_size (eg. = 4) items eg. [x1,x2,x3,x4]
         // and that sample contains 4 training samples or different length,
         // each corresponding to the 4 y samples returned with it:
@@ -74,16 +75,16 @@ fn main() {
             x.push(data[idx..(idx + block_size)].to_vec());
             y.push(data[idx + 1..(idx + block_size + 1)].to_vec())
         }
-        (x, y)
+        (Matrix::from_vecs(x), Matrix::from_vecs(y))
     }
 
     // println!("{:?}", chars);
 
     let (x_batch, y_batch) = get_batch(charidxs, batch_size, block_size, Some(seed));
-    let x_batch = vec![vec![0, 1, 2]];
-    let y_batch = vec![vec![0, 0, 0]];
-    // println!("x = {:?}", x_batch);
-    // println!("y = {:?}", y_batch);
+    // let x_batch = vec![vec![0, 1, 2]];
+    // let y_batch = vec![vec![0, 0, 0]];
+    println!("x = {:?}", x_batch);
+    println!("y = {:?}", y_batch);
 
     let mut transformer = Transformer::new(
         vocab_size,
@@ -96,31 +97,22 @@ fn main() {
         Some(seed),
     );
 
-    let (logits_batch, loss) = transformer.forward(&x_batch, Some(&y_batch)); // (B,T,vocab_size)
-    transformer.zero_grad();
-    transformer.backward();
-    println!(
-        "shape of logits: {:?}",
-        (
-            logits_batch.len(),
-            logits_batch[0].len(),
-            logits_batch[0][0].len()
-        )
-    );
-    if let Some(l) = loss {
-        println!("{:?}", l);
-    }
+    // let (logits_batch, loss) = transformer.forward(&x_batch, Some(&y_batch)).unwrap(); // (B,T,vocab_size)
 
-    // // drop batch paralleilisation
+    // if let Some(l) = loss {
+    //     println!("{:?}", l);
+    // }
+
+    // drop batch paralleilisation
     // for (logits, y) in logits_batch.iter().zip(y_batch.iter()) {
     //     let probs = nn::utils::softmax(&logits, 1); // (T,vocab_size)
     // }
 
-    // let new_idxs = transformer.generate([0].to_vec(), 100);
+    let new_idxs = transformer.generate([13].to_vec(), 2, Some(seed)).unwrap();
 
-    // let mut x_str = String::new();
-    // for idx in new_idxs {
-    //     x_str.push(itochar.get(&idx).unwrap().to_owned());
-    // }
-    // println!("{}", x_str);
+    let mut x_str = String::new();
+    for idx in new_idxs {
+        x_str.push(itochar.get(&idx).unwrap().to_owned());
+    }
+    println!("{}", x_str);
 }
