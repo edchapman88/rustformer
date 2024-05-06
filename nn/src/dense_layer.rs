@@ -15,14 +15,10 @@ pub struct DenseLayer {
 }
 
 impl Layer for DenseLayer {
+    /// x.shape().1 must equal layer.i_size, returns (b, o_size)
     fn forward(&self, x: &Matrix<Node>) -> Result<Matrix<Node>, MatrixError> {
-        if x.shape().1 != 1 {
-            panic!(
-                "batch forward not supported for shape {:?}, x must be of shape (j,1)",
-                x.shape()
-            );
-        }
-        Ok(self.w.matmul(x)? + self.b.clone())
+        let o = self.w.matmul(&x.clone().transpose())? + self.b.clone();
+        Ok(o.transpose())
     }
 
     fn params(&self) -> Vec<CellPtr> {
@@ -103,18 +99,62 @@ mod tests {
         ]);
         let mut x_vec = VecDeque::new();
         x_vec.push_back(x_row);
-        let x = Matrix::new(x_vec).transpose();
+        let x = Matrix::new(x_vec);
 
         let out = layer.forward(&x).unwrap();
-        assert_eq!((2, 1), out.shape());
+        assert_eq!((1, 2), out.shape());
         let ans = layer.w.at((0, 0)).unwrap().resolve() * x.at((0, 0)).unwrap().resolve()
-            + layer.w.at((0, 1)).unwrap().resolve() * x.at((1, 0)).unwrap().resolve()
-            + layer.w.at((0, 2)).unwrap().resolve() * x.at((2, 0)).unwrap().resolve();
+            + layer.w.at((0, 1)).unwrap().resolve() * x.at((0, 1)).unwrap().resolve()
+            + layer.w.at((0, 2)).unwrap().resolve() * x.at((0, 2)).unwrap().resolve();
         assert_eq!(ans, out.at((0, 0)).unwrap().resolve());
 
         let ans_2 = layer.w.at((1, 0)).unwrap().resolve() * x.at((0, 0)).unwrap().resolve()
-            + layer.w.at((1, 1)).unwrap().resolve() * x.at((1, 0)).unwrap().resolve()
-            + layer.w.at((1, 2)).unwrap().resolve() * x.at((2, 0)).unwrap().resolve();
-        assert_eq!(ans_2, out.at((1, 0)).unwrap().resolve());
+            + layer.w.at((1, 1)).unwrap().resolve() * x.at((0, 1)).unwrap().resolve()
+            + layer.w.at((1, 2)).unwrap().resolve() * x.at((0, 2)).unwrap().resolve();
+        assert_eq!(ans_2, out.at((0, 1)).unwrap().resolve());
+    }
+
+    #[test]
+    fn forward_batch() {
+        let layer = DenseLayer::new(2, 3, None);
+        let x_row_0 = VecDeque::from([
+            Node::from_f64(2.0),
+            Node::from_f64(3.0),
+            Node::from_f64(3.0),
+        ]);
+        let x_row_1 = VecDeque::from([
+            Node::from_f64(4.0),
+            Node::from_f64(5.0),
+            Node::from_f64(6.0),
+        ]);
+        let mut x_vec = VecDeque::new();
+        x_vec.push_back(x_row_0);
+        x_vec.push_back(x_row_1);
+        let x = Matrix::new(x_vec);
+        println!("x shape: {:?}", x.shape());
+
+        let out = layer.forward(&x).unwrap();
+        assert_eq!((2, 2), out.shape());
+
+        let ans_0_0 = layer.w.at((0, 0)).unwrap().resolve() * x.at((0, 0)).unwrap().resolve()
+            + layer.w.at((0, 1)).unwrap().resolve() * x.at((0, 1)).unwrap().resolve()
+            + layer.w.at((0, 2)).unwrap().resolve() * x.at((0, 2)).unwrap().resolve();
+
+        let ans_0_1 = layer.w.at((1, 0)).unwrap().resolve() * x.at((0, 0)).unwrap().resolve()
+            + layer.w.at((1, 1)).unwrap().resolve() * x.at((0, 1)).unwrap().resolve()
+            + layer.w.at((1, 2)).unwrap().resolve() * x.at((0, 2)).unwrap().resolve();
+
+        let ans_1_0 = layer.w.at((0, 0)).unwrap().resolve() * x.at((1, 0)).unwrap().resolve()
+            + layer.w.at((0, 1)).unwrap().resolve() * x.at((1, 1)).unwrap().resolve()
+            + layer.w.at((0, 2)).unwrap().resolve() * x.at((1, 2)).unwrap().resolve();
+
+        let ans_1_1 = layer.w.at((1, 0)).unwrap().resolve() * x.at((1, 0)).unwrap().resolve()
+            + layer.w.at((1, 1)).unwrap().resolve() * x.at((1, 1)).unwrap().resolve()
+            + layer.w.at((1, 2)).unwrap().resolve() * x.at((1, 2)).unwrap().resolve();
+
+        assert_eq!(ans_0_0, out.at((0, 0)).unwrap().resolve());
+        assert_eq!(ans_0_1, out.at((0, 1)).unwrap().resolve());
+        assert_eq!(ans_1_0, out.at((1, 0)).unwrap().resolve());
+        assert_eq!(ans_1_1, out.at((1, 1)).unwrap().resolve());
     }
 }
