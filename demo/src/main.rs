@@ -10,8 +10,9 @@ fn main() {
     let seed = 1;
     // load in data and prepare
     let txt = fs::read_to_string(
-        Path::new(std::env::var("CARGO_WORKSPACE_DIR").unwrap().as_str())
-            .join("data/tiny_shakespeare.txt"),
+        // Path::new(std::env::var("CARGO_WORKSPACE_DIR").unwrap().as_str())
+        //     .join("data/tiny_shakespeare.txt"),
+        "/Users/echapman/projects/rust-training/rustformer/data/tiny_shakespeare.txt",
     )
     .unwrap();
 

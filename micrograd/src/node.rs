@@ -1,6 +1,7 @@
 use matrix_library::math_utils::{Exp, Pow};
 use matrix_library::Matrix;
 use std::ops::{AddAssign, Div};
+use std::rc::Rc;
 use std::{
     fmt::Display,
     ops::{Add, Mul, Sub},
@@ -10,28 +11,31 @@ use crate::cell_ptr::CellPtr;
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct Node {
-    op: NodeOp,
+    op: Rc<NodeOp>,
     label: String,
 }
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum NodeOp {
     Leaf(CellPtr),
-    Add(Box<(Node, Node)>),
-    Sub(Box<(Node, Node)>),
-    Mul(Box<(Node, Node)>),
-    Pow(Box<(Node, Node)>),
-    Ln(Box<Node>),
+    Add((Node, Node)),
+    Sub((Node, Node)),
+    Mul((Node, Node)),
+    Pow((Node, Node)),
+    Ln(Node),
 }
 
 impl Node {
     pub fn new(op: NodeOp, label: String) -> Node {
-        Node { op, label }
+        Node {
+            op: Rc::new(op),
+            label,
+        }
     }
 
     pub fn from_f64(data: f64) -> Node {
         Node {
-            op: NodeOp::Leaf(CellPtr::new(data)),
+            op: Rc::new(NodeOp::Leaf(CellPtr::new(data))),
             label: '#'.to_string(),
         }
     }
@@ -53,7 +57,7 @@ impl Node {
     }
 
     pub fn leaf(&self) -> Option<&CellPtr> {
-        if let NodeOp::Leaf(cellptr) = &self.op {
+        if let NodeOp::Leaf(cellptr) = self.op.as_ref() {
             Some(cellptr)
         } else {
             None
@@ -66,16 +70,16 @@ impl Node {
         // res += "\n   /    \\ \n";
         let mut res = String::from("\n");
 
-        match &self.op {
+        match &self.op.as_ref() {
             NodeOp::Leaf(cellptr) => res += &cellptr.data_ref().to_string(),
-            NodeOp::Add(bxd_children)
-            | NodeOp::Mul(bxd_children)
-            | NodeOp::Pow(bxd_children)
-            | NodeOp::Sub(bxd_children) => {
-                let (l_ch, r_ch) = &*(*bxd_children);
+            NodeOp::Add(children)
+            | NodeOp::Mul(children)
+            | NodeOp::Pow(children)
+            | NodeOp::Sub(children) => {
+                let (l_ch, r_ch) = children;
 
-                if let NodeOp::Leaf(l_val) = &l_ch.op {
-                    if let NodeOp::Leaf(r_val) = &r_ch.op {
+                if let NodeOp::Leaf(l_val) = l_ch.op.as_ref() {
+                    if let NodeOp::Leaf(r_val) = r_ch.op.as_ref() {
                         // both leaf
                         res += "     ";
                         res += &self.label;
@@ -101,7 +105,7 @@ impl Node {
                         res += &r_ch.stringify();
                     }
                 } else {
-                    if let NodeOp::Leaf(r_val) = &r_ch.op {
+                    if let NodeOp::Leaf(r_val) = r_ch.op.as_ref() {
                         // l node, r leaf
                         res += "     ";
                         res += &self.label;
@@ -122,9 +126,8 @@ impl Node {
                     }
                 }
             }
-            NodeOp::Ln(bxd_child) => {
-                let child = &*(*bxd_child);
-                if let NodeOp::Leaf(_) = &child.op {
+            NodeOp::Ln(child) => {
+                if let NodeOp::Leaf(_) = child.op.as_ref() {
                     panic!(".ln() not implemented for Value struct")
                 } else {
                     res += "     ";
@@ -139,23 +142,22 @@ impl Node {
 
     pub fn resolve(&self) -> f64 {
         // extract l,r child values regardless of operation
-        let (l, r) = match &self.op {
+        let (l, r) = match self.op.as_ref() {
             NodeOp::Leaf(cellptr) => return cellptr.data_ref(),
-            NodeOp::Add(bxd_children)
-            | NodeOp::Mul(bxd_children)
-            | NodeOp::Pow(bxd_children)
-            | NodeOp::Sub(bxd_children) => {
-                let (l_ch, r_ch) = &*(*bxd_children);
+            NodeOp::Add(children)
+            | NodeOp::Mul(children)
+            | NodeOp::Pow(children)
+            | NodeOp::Sub(children) => {
+                let (l_ch, r_ch) = children;
                 (l_ch.resolve(), r_ch.resolve())
             }
-            NodeOp::Ln(bxd_child) => {
-                let child = &*(*bxd_child);
+            NodeOp::Ln(child) => {
                 return child.resolve().ln();
             }
         };
 
         // operation specific resolution on l,r
-        match &self.op {
+        match self.op.as_ref() {
             NodeOp::Add(_) => l + r,
             NodeOp::Sub(_) => l - r,
             NodeOp::Mul(_) => l * r,
@@ -164,34 +166,33 @@ impl Node {
             NodeOp::Ln(_) => panic!("handled with early return from previous match"),
         }
     }
-    pub fn backward(&mut self, out_grad: f64) {
-        match &mut self.op {
+    pub fn backward(&self, out_grad: f64) {
+        match self.op.as_ref() {
             NodeOp::Leaf(cellptr) => cellptr.add_grad(out_grad),
-            NodeOp::Add(bxd_children) => {
-                let (l_ch, r_ch) = &mut *(*bxd_children);
+            NodeOp::Add(children) => {
+                let (l_ch, r_ch) = children;
                 l_ch.backward(out_grad);
                 r_ch.backward(out_grad);
             }
-            NodeOp::Sub(bxd_children) => {
-                let (l_ch, r_ch) = &mut *(*bxd_children);
+            NodeOp::Sub(children) => {
+                let (l_ch, r_ch) = children;
                 l_ch.backward(out_grad);
                 r_ch.backward(-out_grad);
             }
-            NodeOp::Mul(bxd_children) => {
-                let (l_ch, r_ch) = &mut *(*bxd_children);
+            NodeOp::Mul(children) => {
+                let (l_ch, r_ch) = children;
                 l_ch.backward(r_ch.resolve() * out_grad);
                 r_ch.backward(l_ch.resolve() * out_grad);
             }
-            NodeOp::Pow(bxd_children) => {
+            NodeOp::Pow(children) => {
                 // implicit that r_ch is the exponent
-                let (l_ch, r_ch) = &mut *(*bxd_children);
+                let (l_ch, r_ch) = children;
                 let l_val = l_ch.resolve();
                 let r_val = r_ch.resolve();
                 l_ch.backward(r_val * l_val.powf(r_val - 1.0) * out_grad);
                 r_ch.backward(l_val.powf(r_val) * l_val.ln() * out_grad);
             }
-            NodeOp::Ln(bxd_child) => {
-                let child = &mut *(*bxd_child);
+            NodeOp::Ln(child) => {
                 let child_val = child.resolve();
                 child.backward(out_grad / child_val);
             }
@@ -199,18 +200,17 @@ impl Node {
     }
 
     pub fn zero_grad(&self) {
-        match &self.op {
+        match self.op.as_ref() {
             NodeOp::Leaf(cellptr) => cellptr.zero_grad(),
-            NodeOp::Add(bxd_children)
-            | NodeOp::Sub(bxd_children)
-            | NodeOp::Mul(bxd_children)
-            | NodeOp::Pow(bxd_children) => {
-                let (l_ch, r_ch) = &*(*bxd_children);
+            NodeOp::Add(children)
+            | NodeOp::Sub(children)
+            | NodeOp::Mul(children)
+            | NodeOp::Pow(children) => {
+                let (l_ch, r_ch) = children;
                 l_ch.zero_grad();
                 r_ch.zero_grad();
             }
-            NodeOp::Ln(bxd_child) => {
-                let child = &*(*bxd_child);
+            NodeOp::Ln(child) => {
                 child.zero_grad();
             }
         }
@@ -220,7 +220,7 @@ impl Node {
 impl Add for Node {
     type Output = Node;
     fn add(self, rhs: Node) -> Self::Output {
-        Node::new(NodeOp::Add(Box::new((self, rhs))), String::from("+"))
+        Node::new(NodeOp::Add((self, rhs)), String::from("+"))
     }
 }
 
@@ -233,23 +233,23 @@ impl AddAssign for Node {
 impl Sub for Node {
     type Output = Node;
     fn sub(self, rhs: Node) -> Self::Output {
-        Node::new(NodeOp::Sub(Box::new((self, rhs))), String::from("-"))
+        Node::new(NodeOp::Sub((self, rhs)), String::from("-"))
     }
 }
 
 impl Mul for Node {
     type Output = Node;
     fn mul(self, rhs: Self) -> Self::Output {
-        Node::new(NodeOp::Mul(Box::new((self, rhs))), String::from("*"))
+        Node::new(NodeOp::Mul((self, rhs)), String::from("*"))
     }
 }
 
 impl Node {
     pub fn pow(self, e: Node) -> Node {
-        Node::new(NodeOp::Pow(Box::new((self, e))), String::from("^"))
+        Node::new(NodeOp::Pow((self, e)), String::from("^"))
     }
     pub fn ln(self) -> Node {
-        Node::new(NodeOp::Ln(Box::new(self)), String::from("ln"))
+        Node::new(NodeOp::Ln(self), String::from("ln"))
     }
 }
 
