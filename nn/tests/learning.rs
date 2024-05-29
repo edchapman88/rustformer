@@ -15,7 +15,7 @@ fn model_inference() {
         Box::new(DenseLayer::new(1, 2, None)),
         Box::new(SigmoidLayer::new()),
     ]);
-    let x = Matrix::fill((5, 1), Node::from_f64(1.0));
+    let x = Matrix::fill((1, 5), Node::from_f64(1.0));
     let mut y = model.forward(&x).unwrap();
     y.at_mut((0, 0)).unwrap().backward(1.0);
     println!("{}", y.at((0, 0)).unwrap());
@@ -63,7 +63,7 @@ fn model_learning() {
         let sample = xor.choose(&mut rng);
         let (xi, yi) = sample.unwrap();
 
-        let y_pred = model.forward(xi).unwrap();
+        let y_pred = model.forward(&xi.clone().transpose()).unwrap();
 
         let mut e = bce(
             yi.at((0, 0)).unwrap().clone(),
@@ -96,7 +96,12 @@ fn model_learning() {
             ),
             y_true.resolve()
         );
-        let y_pred = model.forward(&xi).unwrap().at((0, 0)).unwrap().clone();
+        let y_pred = model
+            .forward(&xi.clone().transpose())
+            .unwrap()
+            .at((0, 0))
+            .unwrap()
+            .clone();
         println!(
             "{:?} -> pred: {}",
             (
