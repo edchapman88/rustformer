@@ -1,4 +1,6 @@
-#[derive(PartialEq, Debug, Copy, Clone)]
+use serde::{Deserialize, Serialize};
+
+#[derive(PartialEq, Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct Value {
     pub data: f64,
     pub grad: f64,

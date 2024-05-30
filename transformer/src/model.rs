@@ -1,5 +1,7 @@
 use matrix_library::{Matrix, MatrixError};
+use micrograd::cell_ptr::CellPtr;
 use micrograd::node::Node;
+use nn::utils::class_cross_entropy;
 use nn::{
     dense_layer::DenseLayer, embedding_table::EmbeddingTable, relu_layer::ReluLayer, serial::Layer,
 };
@@ -16,7 +18,6 @@ pub struct Transformer {
     block_size: usize,
     batch_size: usize,
     vocab_size: usize,
-    logits_loss_grad: Vec<Vec<Vec<f64>>>,
 }
 
 struct Block {
@@ -56,7 +57,6 @@ impl Transformer {
             block_size,
             batch_size,
             vocab_size,
-            logits_loss_grad: vec![vec![vec![0.0; vocab_size]; block_size]; batch_size],
         }
     }
 
@@ -65,9 +65,7 @@ impl Transformer {
         &mut self,
         x: &Matrix<usize>,
         y: Option<&Matrix<usize>>,
-    ) -> Result<(Vec<Matrix<Node>>, Option<Vec<Node>>), MatrixError> {
-        // let mut batch_loss = Node::placeHolder();
-
+    ) -> Result<(Vec<Matrix<Node>>, Option<Node>), MatrixError> {
         // drop batch parallelisation
         let mut batch_out = Vec::new();
         for batch_idx in 0..x.shape().0 {
@@ -103,78 +101,15 @@ impl Transformer {
             let logits = self.lm_head.forward(&emb_vec)?;
 
             batch_out.push(logits);
-
-            // for (example_idx, example) in emb_vec.iter().enumerate() {
-            //     // each example has used a different number of tokens in it's context
-            //     // but the dimensionality of each example is still (C,)
-            //     // because the attention mechanism compressed the larger contexts into
-            //     // a vector of the same length C
-
-            //     // lm_head outputs (vocab_size,)
-            //     // TODO: refactor loop with an iterator than consumes, to avoid clone() below
-            //     let logits = self.lm_head.forward(example.clone());
-            //     if let Some(targets) = y {
-            //         // combined form of softmax and cross-entropy converts logits -> loss
-            //         let input_grads: Vec<f64>;
-            //         if batch_idx == 0 && example_idx == 0 {
-            //             (batch_loss, input_grads) =
-            //                 class_cross_entropy(&logits, targets[batch_idx][example_idx]);
-            //         } else {
-            //             let loss: Node;
-            //             (loss, input_grads) =
-            //                 class_cross_entropy(&logits, targets[batch_idx][example_idx]);
-            //             batch_loss = batch_loss + loss;
-            //         }
-            //         self.logits_loss_grad[batch_idx][example_idx] = input_grads;
-            //     }
-            //     batch_item.push(logits);
-            // }
-
-            // rebuild batch of independent items
-            // batch_out.push(batch_item); // (B,T,vocab_size)
         }
-        // // batch loss on 'seen' training data
-        // if let Some(_) = y {
-        //     (batch_out, Some(batch_loss.resolve()))
-        // } else {
-        //     (batch_out, None)
-        // }
+
+        if let Some(targets) = y {
+            let loss = class_cross_entropy(&batch_out, targets);
+            return Ok((batch_out, Some(loss)));
+        }
+
         Ok((batch_out, None))
     }
-
-    // pub fn backward(&mut self) {
-    //     let mut loss_grad_sum = vec![0.0; self.vocab_size];
-    //     for examples_loss_grads in self.logits_loss_grad.iter() {
-    //         for loss_grads in examples_loss_grads.iter() {
-    //             // lm_head nn has accrued loss from each consequtive example
-    //             // since we haven't got the whole computation graph stored for each of the
-    //             // model components, but instead only the most recent example in the most
-    //             // recent item in the batch; we will backprop the sum of the errors accrued
-    //             // for each of the tokens in the vocab - which is the 3rd dim of logits_loss_grad
-
-    //             // TODO: this might be great regularisation, or it might dilute the learning signal
-    //             // to much by the time the gradients reach the early layers
-    //             loss_grad_sum = loss_grad_sum
-    //                 .iter()
-    //                 .zip(loss_grads.iter())
-    //                 .map(|(&sum, &loss)| sum + loss)
-    //                 .collect();
-    //         }
-    //     }
-    //     self.lm_head.backward(loss_grad_sum);
-    //     let mut out_grad = Vec::from(self.lm_head.get_input_grad());
-    //     for block in self.hidden_layers.iter_mut().rev() {
-    //         // TODO
-    //         // block.backward(out_grad);
-    //     }
-    // }
-
-    // pub fn zero_grad(&mut self) {
-    //     self.lm_head.zero_grad();
-    //     for block in self.hidden_layers.iter_mut() {
-    //         block.zero_grad();
-    //     }
-    // }
 
     pub fn generate(
         &mut self,
@@ -217,6 +152,25 @@ impl Transformer {
         }
         Ok(idx)
     }
+
+    pub fn params(&self) -> Vec<CellPtr> {
+        let mut params = Vec::new();
+        params.extend(self.token_emb.params());
+        params.extend(self.pos_emb.params());
+        params.extend(
+            self.hidden_layers
+                .iter()
+                .map(|l| l.params())
+                .reduce(|mut acc, mut params| {
+                    acc.append(&mut params);
+                    acc
+                })
+                .expect("expect at least one parameter in the model"),
+        );
+
+        params.extend(self.lm_head.params());
+        params
+    }
 }
 
 impl Block {
@@ -229,17 +183,13 @@ impl Block {
         }
     }
 
-    // fn zero_grad(&mut self) {
-    //     self.self_attention.zero_grad();
-    //     self.linear1.zero_grad();
-    //     self.linear2.zero_grad();
-    // }
-
-    // fn backward(&mut self, mut out_grad: Vec<f64>) -> Result<(), LayerError> {
-    //     // TODO: include ff-nn backprop when they are implemented in .forward()
-    //     self.self_attention.backward(out_grad)?;
-    //     Ok(())
-    // }
+    pub fn params(&self) -> Vec<CellPtr> {
+        let mut params = Vec::new();
+        params.extend(self.self_attention.params());
+        params.extend(self.linear1.params());
+        params.extend(self.linear2.params());
+        params
+    }
 
     // not parallelised yet, x: (T,C)
     fn forward(&self, x: &Matrix<Node>) -> Result<Matrix<Node>, MatrixError> {
@@ -293,17 +243,6 @@ impl SelfAttention {
         }
     }
 
-    // fn zero_grad(&mut self) {
-    //     self.key.zero_grad();
-    //     self.query.zero_grad();
-    //     self.value.zero_grad();
-    // }
-
-    // fn backward(&mut self, mut out_grad: Vec<f64>) -> Result<(), LayerError> {
-    //     panic!("not implimented");
-    //     Ok(())
-    // }
-
     fn forward(&self, x: &Matrix<Node>) -> Result<Matrix<Node>, MatrixError> {
         // TODO:
         // currently not parallelised over the batch, so input (T,C)
@@ -315,8 +254,8 @@ impl SelfAttention {
         // dot product each key with each query, since there are T of each,
         // there are T * T combinations, and this operation can be performed with
         // a matrix multiplication (T, head_size) @ (head_size, T) -> (T,T)
-        let mut wei = q.matmul(&k.transpose())?;
-        // * Node::from_f64(self.head_size as f64).pow(Node::from_f64(-0.5));
+        let mut wei =
+            q.matmul(&k.transpose())? * Node::from_f64((self.head_size as f64).powf(-0.5));
 
         // note: order matters, because the jth row in wei must be a vector where
         // all of the elements are a dot product between the jth q vector and the
@@ -326,18 +265,13 @@ impl SelfAttention {
 
         // for language modeling, the token affinites are masked so that a token can
         // only query tokens before it.
-        let mut wei_mask: Vec<Vec<_>> = Vec::new();
         for j in 0..wei.shape().1 {
-            wei_mask.push(Vec::new());
             for i in 0..wei.shape().0 {
                 if i > j {
-                    wei_mask[j].push(Node::from_f64(f64::NEG_INFINITY));
-                } else {
-                    wei_mask[j].push(Node::from_f64(1.0));
+                    *wei.at_mut((j, i)).unwrap() = Node::from_f64(f64::NEG_INFINITY);
                 }
             }
         }
-        wei = wei * Matrix::from_vecs(wei_mask);
 
         // softmax across each row
         let wei_softmax = wei.softmax(1);
@@ -347,5 +281,13 @@ impl SelfAttention {
 
         // return (T,T) @ (T,head_size) -> (T,head_size)
         wei_softmax.matmul(&v)
+    }
+
+    pub fn params(&self) -> Vec<CellPtr> {
+        let mut params = Vec::new();
+        params.extend(self.key.params());
+        params.extend(self.query.params());
+        params.extend(self.value.params());
+        params
     }
 }

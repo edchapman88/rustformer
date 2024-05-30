@@ -1,4 +1,5 @@
 use matrix_library::{Matrix, MatrixError};
+use micrograd::cell_ptr::CellPtr;
 use micrograd::node::Node;
 use rand::distributions::Distribution;
 use rand::SeedableRng;
@@ -41,6 +42,19 @@ impl EmbeddingTable {
 
     pub fn at(&self, idxs: (usize, usize)) -> Option<&Node> {
         self.table.at(idxs)
+    }
+
+    pub fn params(&self) -> Vec<CellPtr> {
+        let mut v: Vec<CellPtr> = Vec::new();
+        v.append(
+            self.table
+                .clone()
+                .into_iter()
+                .map(|node| node.leaf().expect("all layer params are leaves").clone())
+                .collect::<Vec<CellPtr>>()
+                .as_mut(),
+        );
+        v
     }
 }
 

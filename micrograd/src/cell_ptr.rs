@@ -1,9 +1,9 @@
+use crate::value::Value;
+use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::value::Value;
-
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub struct Cell {
     val: RefCell<Value>,
 }
@@ -16,7 +16,7 @@ impl Cell {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Serialize, Deserialize)]
 pub struct CellPtr {
     ptr: Rc<Cell>,
 }
@@ -40,6 +40,9 @@ impl CellPtr {
     }
     pub fn add_data(&self, delta: f64) {
         self.ptr.val.borrow_mut().data += delta
+    }
+    pub fn load_data(&self, data: f64, grad: f64) {
+        *self.ptr.val.borrow_mut() = Value { data, grad };
     }
     pub fn zero_grad(&self) {
         self.ptr.val.borrow_mut().grad = 0.0

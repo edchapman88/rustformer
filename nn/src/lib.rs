@@ -4,4 +4,4 @@ pub mod optim;
 pub mod relu_layer;
 pub mod serial;
 pub mod sigmoid_layer;
-// pub mod utils;
+pub mod utils;

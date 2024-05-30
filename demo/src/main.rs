@@ -1,4 +1,5 @@
 use matrix_library::Matrix;
+use nn::optim::OptimSGD;
 use rand::Rng;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
@@ -36,21 +37,22 @@ fn main() {
 
     // encode txt data into vocab indexes
     let mut charidxs = Vec::new();
-    for c in all_chars[0..14].iter() {
+    for c in all_chars.iter() {
         charidxs.push(*chartoi.get(c).unwrap())
     }
 
-    // let vocab_size = chars.len();
-    let vocab_size = 17;
+    let vocab_size = chars.len();
+    // let vocab_size = 17;
     let n_embd = 5;
     let block_size = 8;
     let n_layers = 1;
     let n_heads = 1;
     let batch_size = 1;
+    let n_itrs = 10;
     let head_size = n_embd; // for now, without ff-nn's to project head_size -> n_embd
 
     fn get_batch(
-        data: Vec<usize>,
+        data: &[usize],
         batch_size: usize,
         block_size: usize,
         seed: Option<u64>,
@@ -79,14 +81,6 @@ fn main() {
         (Matrix::from_vecs(x), Matrix::from_vecs(y))
     }
 
-    // println!("{:?}", chars);
-
-    let (x_batch, y_batch) = get_batch(charidxs, batch_size, block_size, Some(seed));
-    // let x_batch = vec![vec![0, 1, 2]];
-    // let y_batch = vec![vec![0, 0, 0]];
-    println!("x = {:?}", x_batch);
-    println!("y = {:?}", y_batch);
-
     let mut transformer = Transformer::new(
         vocab_size,
         n_embd,
@@ -98,22 +92,54 @@ fn main() {
         Some(seed),
     );
 
-    // let (logits_batch, loss) = transformer.forward(&x_batch, Some(&y_batch)).unwrap(); // (B,T,vocab_size)
+    let params = transformer.params();
+    let optim = OptimSGD::new(0.04, n_itrs, params);
+    // ___________________________________________
+    // optim.load("./ckpt.json");
+    // let new_idxs = transformer
+    //     .generate([15, 16, 17, 18].to_vec(), 30, Some(seed))
+    //     .unwrap();
 
-    // if let Some(l) = loss {
-    //     println!("{:?}", l);
+    // let mut x_str = String::new();
+    // for idx in new_idxs {
+    //     x_str.push(itochar.get(&idx).unwrap().to_owned());
     // }
+    // println!("{}", x_str);
+    // ___________________________________________
 
-    // drop batch paralleilisation
-    // for (logits, y) in logits_batch.iter().zip(y_batch.iter()) {
-    //     let probs = nn::utils::softmax(&logits, 1); // (T,vocab_size)
-    // }
+    for itr in 0..n_itrs {
+        let (x_batch, y_batch) = get_batch(&charidxs, batch_size, block_size, Some(seed));
+        let (logits_batch, loss) = transformer.forward(&x_batch, Some(&y_batch)).unwrap();
+        if let Some(l) = loss {
+            optim.zero_grad();
+            l.clear_all_caches();
+            l.backward(1.0);
+            optim.update(itr);
+            println!("{}", l);
+        }
 
-    let new_idxs = transformer.generate([13].to_vec(), 2, Some(seed)).unwrap();
+        if itr % 3 == 0 {
+            let new_idxs = transformer
+                .generate([15, 16, 17, 18].to_vec(), 30, Some(seed))
+                .unwrap();
 
-    let mut x_str = String::new();
-    for idx in new_idxs {
-        x_str.push(itochar.get(&idx).unwrap().to_owned());
+            let mut x_str = String::new();
+            for idx in new_idxs {
+                x_str.push(itochar.get(&idx).unwrap().to_owned());
+            }
+            println!("itr == {itr}\n{}\n\n", x_str);
+        }
     }
-    println!("{}", x_str);
+
+    optim.save("./ckpt.json");
+
+    // let new_idxs = transformer
+    //     .generate([13].to_vec(), 100, Some(seed))
+    //     .unwrap();
+
+    // let mut x_str = String::new();
+    // for idx in new_idxs {
+    //     x_str.push(itochar.get(&idx).unwrap().to_owned());
+    // }
+    // println!("{}", x_str);
 }

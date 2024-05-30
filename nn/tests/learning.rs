@@ -65,7 +65,7 @@ fn model_learning() {
 
         let y_pred = model.forward(&xi.clone().transpose()).unwrap();
 
-        let mut e = bce(
+        let e = bce(
             yi.at((0, 0)).unwrap().clone(),
             y_pred.at((0, 0)).unwrap().clone(),
         );
@@ -82,6 +82,7 @@ fn model_learning() {
         }
 
         e.zero_grad();
+        e.clear_all_caches();
         e.backward(1.0);
         optim.update(itr);
     }

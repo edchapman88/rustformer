@@ -1,5 +1,7 @@
 use matrix_library::math_utils::{Exp, Pow};
 use matrix_library::Matrix;
+use std::borrow::Borrow;
+use std::cell::RefCell;
 use std::ops::{AddAssign, Div};
 use std::rc::Rc;
 use std::{
@@ -16,13 +18,30 @@ pub struct Node {
 }
 
 #[derive(PartialEq, Debug, Clone)]
+pub struct Cache {
+    inner: RefCell<Option<f64>>,
+}
+
+impl Cache {
+    pub fn empty() -> Self {
+        Cache {
+            inner: RefCell::new(None),
+        }
+    }
+
+    pub fn clear(&self) {
+        *self.inner.borrow_mut() = None
+    }
+}
+
+#[derive(PartialEq, Debug, Clone)]
 pub enum NodeOp {
     Leaf(CellPtr),
-    Add((Node, Node)),
-    Sub((Node, Node)),
-    Mul((Node, Node)),
-    Pow((Node, Node)),
-    Ln(Node),
+    Add((Node, Node, Cache)),
+    Sub((Node, Node, Cache)),
+    Mul((Node, Node, Cache)),
+    Pow((Node, Node, Cache)),
+    Ln((Node, Cache)),
 }
 
 impl Node {
@@ -76,7 +95,7 @@ impl Node {
             | NodeOp::Mul(children)
             | NodeOp::Pow(children)
             | NodeOp::Sub(children) => {
-                let (l_ch, r_ch) = children;
+                let (l_ch, r_ch, _) = children;
 
                 if let NodeOp::Leaf(l_val) = l_ch.op.as_ref() {
                     if let NodeOp::Leaf(r_val) = r_ch.op.as_ref() {
@@ -126,7 +145,7 @@ impl Node {
                     }
                 }
             }
-            NodeOp::Ln(child) => {
+            NodeOp::Ln((child, _)) => {
                 if let NodeOp::Leaf(_) = child.op.as_ref() {
                     panic!(".ln() not implemented for Value struct")
                 } else {
@@ -143,56 +162,75 @@ impl Node {
     pub fn resolve(&self) -> f64 {
         // extract l,r child values regardless of operation
         let (l, r) = match self.op.as_ref() {
-            NodeOp::Leaf(cellptr) => return cellptr.data_ref(),
-            NodeOp::Add(children)
-            | NodeOp::Mul(children)
-            | NodeOp::Pow(children)
-            | NodeOp::Sub(children) => {
-                let (l_ch, r_ch) = children;
+            NodeOp::Leaf(cellptr) => {
+                return cellptr.data_ref();
+            }
+            NodeOp::Add((l_ch, r_ch, cache))
+            | NodeOp::Mul((l_ch, r_ch, cache))
+            | NodeOp::Pow((l_ch, r_ch, cache))
+            | NodeOp::Sub((l_ch, r_ch, cache)) => {
+                if let Some(resolved) = cache.inner.borrow().as_ref() {
+                    return *resolved;
+                }
                 (l_ch.resolve(), r_ch.resolve())
             }
-            NodeOp::Ln(child) => {
-                return child.resolve().ln();
+            NodeOp::Ln((child, cache)) => {
+                if let Some(resolved) = cache.inner.borrow().as_ref() {
+                    return *resolved;
+                }
+                let resolution = child.resolve().ln();
+                *cache.inner.borrow_mut() = Some(resolution);
+                return resolution;
             }
         };
 
         // operation specific resolution on l,r
-        match self.op.as_ref() {
+        let resolution = match self.op.as_ref() {
             NodeOp::Add(_) => l + r,
             NodeOp::Sub(_) => l - r,
             NodeOp::Mul(_) => l * r,
             NodeOp::Pow(_) => l.powf(r),
             NodeOp::Leaf(_) => panic!("handled with early return from previous match"),
             NodeOp::Ln(_) => panic!("handled with early return from previous match"),
-        }
+        };
+
+        // update cache
+        match self.op.as_ref() {
+            NodeOp::Add((_, _, cache))
+            | NodeOp::Mul((_, _, cache))
+            | NodeOp::Pow((_, _, cache))
+            | NodeOp::Sub((_, _, cache)) => {
+                *cache.inner.borrow_mut() = Some(resolution);
+            }
+            NodeOp::Leaf(_) => panic!("handled with early return from previous match"),
+            NodeOp::Ln(_) => panic!("handled with early return from previous match"),
+        };
+
+        resolution
     }
     pub fn backward(&self, out_grad: f64) {
         match self.op.as_ref() {
             NodeOp::Leaf(cellptr) => cellptr.add_grad(out_grad),
-            NodeOp::Add(children) => {
-                let (l_ch, r_ch) = children;
+            NodeOp::Add((l_ch, r_ch, _)) => {
                 l_ch.backward(out_grad);
                 r_ch.backward(out_grad);
             }
-            NodeOp::Sub(children) => {
-                let (l_ch, r_ch) = children;
+            NodeOp::Sub((l_ch, r_ch, _)) => {
                 l_ch.backward(out_grad);
                 r_ch.backward(-out_grad);
             }
-            NodeOp::Mul(children) => {
-                let (l_ch, r_ch) = children;
+            NodeOp::Mul((l_ch, r_ch, _)) => {
                 l_ch.backward(r_ch.resolve() * out_grad);
                 r_ch.backward(l_ch.resolve() * out_grad);
             }
-            NodeOp::Pow(children) => {
+            NodeOp::Pow((l_ch, r_ch, _)) => {
                 // implicit that r_ch is the exponent
-                let (l_ch, r_ch) = children;
                 let l_val = l_ch.resolve();
                 let r_val = r_ch.resolve();
                 l_ch.backward(r_val * l_val.powf(r_val - 1.0) * out_grad);
                 r_ch.backward(l_val.powf(r_val) * l_val.ln() * out_grad);
             }
-            NodeOp::Ln(child) => {
+            NodeOp::Ln((child, _)) => {
                 let child_val = child.resolve();
                 child.backward(out_grad / child_val);
             }
@@ -202,17 +240,34 @@ impl Node {
     pub fn zero_grad(&self) {
         match self.op.as_ref() {
             NodeOp::Leaf(cellptr) => cellptr.zero_grad(),
-            NodeOp::Add(children)
-            | NodeOp::Sub(children)
-            | NodeOp::Mul(children)
-            | NodeOp::Pow(children) => {
-                let (l_ch, r_ch) = children;
+            NodeOp::Add((l_ch, r_ch, _))
+            | NodeOp::Sub((l_ch, r_ch, _))
+            | NodeOp::Mul((l_ch, r_ch, _))
+            | NodeOp::Pow((l_ch, r_ch, _)) => {
                 l_ch.zero_grad();
                 r_ch.zero_grad();
             }
-            NodeOp::Ln(child) => {
+            NodeOp::Ln((child, _)) => {
                 child.zero_grad();
             }
+        }
+    }
+
+    pub fn clear_all_caches(&self) {
+        match self.op.as_ref() {
+            NodeOp::Add((l_ch, r_ch, cache))
+            | NodeOp::Sub((l_ch, r_ch, cache))
+            | NodeOp::Mul((l_ch, r_ch, cache))
+            | NodeOp::Pow((l_ch, r_ch, cache)) => {
+                cache.clear();
+                l_ch.clear_all_caches();
+                r_ch.clear_all_caches();
+            }
+            NodeOp::Ln((child, cache)) => {
+                cache.clear();
+                child.clear_all_caches();
+            }
+            NodeOp::Leaf(_) => {}
         }
     }
 }
@@ -220,7 +275,7 @@ impl Node {
 impl Add for Node {
     type Output = Node;
     fn add(self, rhs: Node) -> Self::Output {
-        Node::new(NodeOp::Add((self, rhs)), String::from("+"))
+        Node::new(NodeOp::Add((self, rhs, Cache::empty())), String::from("+"))
     }
 }
 
@@ -233,23 +288,23 @@ impl AddAssign for Node {
 impl Sub for Node {
     type Output = Node;
     fn sub(self, rhs: Node) -> Self::Output {
-        Node::new(NodeOp::Sub((self, rhs)), String::from("-"))
+        Node::new(NodeOp::Sub((self, rhs, Cache::empty())), String::from("-"))
     }
 }
 
 impl Mul for Node {
     type Output = Node;
     fn mul(self, rhs: Self) -> Self::Output {
-        Node::new(NodeOp::Mul((self, rhs)), String::from("*"))
+        Node::new(NodeOp::Mul((self, rhs, Cache::empty())), String::from("*"))
     }
 }
 
 impl Node {
     pub fn pow(self, e: Node) -> Node {
-        Node::new(NodeOp::Pow((self, e)), String::from("^"))
+        Node::new(NodeOp::Pow((self, e, Cache::empty())), String::from("^"))
     }
     pub fn ln(self) -> Node {
-        Node::new(NodeOp::Ln(self), String::from("ln"))
+        Node::new(NodeOp::Ln((self, Cache::empty())), String::from("ln"))
     }
 }
 

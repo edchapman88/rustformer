@@ -1,5 +1,6 @@
-use micrograd::{Node, Value};
-use std::f64::consts::E;
+use matrix_library::math_utils::Exp;
+use matrix_library::Matrix;
+use micrograd::node::Node;
 
 pub fn softmax(x: &Vec<Vec<f64>>, dim: usize) -> Vec<Vec<f64>> {
     let mut out: Vec<Vec<f64>> = vec![vec![0.0; x[0].len()]; x.len()];
@@ -21,7 +22,7 @@ pub fn softmax(x: &Vec<Vec<f64>>, dim: usize) -> Vec<Vec<f64>> {
     out
 }
 
-pub fn class_cross_entropy(x: &Vec<f64>, y_idx: usize) -> (Node, Vec<f64>) {
+pub fn class_cross_entropy(x: &Vec<Matrix<Node>>, y_idx: &Matrix<usize>) -> Node {
     // implementation optimised for discrete target class index as the ground truth
     // input x are logits
     // - x_i + log( sum n->N[ e^x_n ] )
@@ -29,21 +30,42 @@ pub fn class_cross_entropy(x: &Vec<f64>, y_idx: usize) -> (Node, Vec<f64>) {
     // e was [2,4]
     // [[1,3],[5]]
 
-    let mut acc = Value::new(E).pow_val(&Value::new(x[0]));
-    for i in 1..x.len() {
-        acc = acc + Value::new(E).pow_val(&Value::new(x[i]));
-    }
-    let mut loss = &Value::new(-1.0) * &Value::new(x[y_idx]) + acc.ln();
+    // x.shape = (B,T,C)
+    let (batch_size, seq_len) = y_idx.shape();
 
-    let leaves = loss.backward(1.0);
-    // graph leaves corresonding to inputs occur at odd positions in the expression above
-    // leaf at index 1 references the input at position y_idx
-    let mut input_grads = Vec::new();
-    for (i, leaf) in leaves.iter().enumerate() {
-        if i % 2 != 0 && i != 1 {
-            input_grads.push(leaf.grad)
+    let mut loss = Node::from_f64(0.0);
+
+    for b in 0..batch_size {
+        for t in 0..seq_len {
+            // println!("{}", x[b]);
+            let mut acc = x[b].at((t, 0)).unwrap().clone().exp();
+            // println!("{}", acc);
+            for i in 1..x[b].shape().1 {
+                acc += x[b].at((t, i)).unwrap().clone().exp();
+            }
+            // println!("{}", acc);
+            loss += Node::from_f64(-1.0) * x[b].at((t, *y_idx.at((b, t)).unwrap())).unwrap().clone()
+                + acc.ln()
         }
     }
-    input_grads[y_idx] += leaves[1].grad;
-    (loss, input_grads)
+
+    loss
+
+    // let mut acc = Value::new(E).pow_val(&Value::new(x[0]));
+    // for i in 1..x.len() {
+    //     acc = acc + Value::new(E).pow_val(&Value::new(x[i]));
+    // }
+    // let mut loss = &Value::new(-1.0) * &Value::new(x[y_idx]) + acc.ln();
+
+    // let leaves = loss.backward(1.0);
+    // // graph leaves corresonding to inputs occur at odd positions in the expression above
+    // // leaf at index 1 references the input at position y_idx
+    // let mut input_grads = Vec::new();
+    // for (i, leaf) in leaves.iter().enumerate() {
+    //     if i % 2 != 0 && i != 1 {
+    //         input_grads.push(leaf.grad)
+    //     }
+    // }
+    // input_grads[y_idx] += leaves[1].grad;
+    // (loss, input_grads)
 }
