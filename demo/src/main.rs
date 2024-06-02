@@ -48,7 +48,7 @@ fn main() {
     let n_layers = 1;
     let n_heads = 1;
     let batch_size = 1;
-    let n_itrs = 10;
+    let n_itrs = 5;
     let head_size = n_embd; // for now, without ff-nn's to project head_size -> n_embd
 
     fn get_batch(
@@ -120,7 +120,18 @@ fn main() {
 
         if itr % 3 == 0 {
             let new_idxs = transformer
-                .generate([15, 16, 17, 18].to_vec(), 30, Some(seed))
+                .generate(
+                    [
+                        chartoi[&'A'],
+                        chartoi[&'l'],
+                        chartoi[&'l'],
+                        chartoi[&':'],
+                        chartoi[&'\n'],
+                    ]
+                    .to_vec(),
+                    30,
+                    Some(seed),
+                )
                 .unwrap();
 
             let mut x_str = String::new();
@@ -131,10 +142,21 @@ fn main() {
         }
     }
 
-    optim.save("./ckpt.json");
+    // optim.save("./ckpt.json");
 
     // let new_idxs = transformer
-    //     .generate([13].to_vec(), 100, Some(seed))
+    //     .generate(
+    //         [
+    //             chartoi[&'A'],
+    //             chartoi[&'l'],
+    //             chartoi[&'l'],
+    //             chartoi[&':'],
+    //             chartoi[&'\n'],
+    //         ]
+    //         .to_vec(),
+    //         100,
+    //         Some(seed),
+    //     )
     //     .unwrap();
 
     // let mut x_str = String::new();
