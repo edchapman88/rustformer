@@ -1,31 +1,43 @@
-use matrix_library::{Matrix, MatrixError};
-use micrograd::{cell_ptr::CellPtr, node::Node};
+use interfaces::{DLModule, Primitive, Tensor};
 
-pub trait Layer {
-    fn forward(&self, x: &Matrix<Node>) -> Result<Matrix<Node>, MatrixError>;
-    fn params(&self) -> Vec<CellPtr>;
+// pub trait Layer {
+//     fn forward(&self, x: &Matrix<Node>) -> Result<Matrix<Node>, MatrixError>;
+//     fn params(&self) -> Vec<CellPtr>;
+// }
+
+pub struct Serial<T, P>
+where
+    T: Tensor<P>,
+    P: Primitive,
+{
+    pub layers: Vec<Box<dyn DLModule<T, P, DLModuleError = <T as Tensor<P>>::TensorError>>>,
 }
 
-pub struct Serial {
-    pub layers: Vec<Box<dyn Layer>>,
-}
-
-impl Serial {
-    pub fn new(layers: Vec<Box<dyn Layer>>) -> Serial {
+impl<T, P> Serial<T, P>
+where
+    T: Tensor<P>,
+    P: Primitive,
+{
+    pub fn new(
+        layers: Vec<Box<dyn DLModule<T, P, DLModuleError = <T as Tensor<P>>::TensorError>>>,
+    ) -> Serial<T, P> {
         Serial { layers }
     }
-    pub fn forward(&self, x: &Matrix<Node>) -> Result<Matrix<Node>, MatrixError> {
-        let mut tmp = x;
-        // dummy
-        let mut y = Matrix::fill((1, 1), Node::from_f64(0.0));
-        for l in self.layers.iter() {
+    pub fn forward(&self, x: &T) -> Result<T, <T as Tensor<P>>::TensorError> {
+        let mut y = self
+            .layers
+            .first()
+            .expect("at least one layer in Serial")
+            .forward(x)?;
+        let mut tmp = &y;
+        for l in self.layers[1..].iter() {
             y = l.forward(tmp)?;
             tmp = &y;
         }
         Ok(y)
     }
 
-    pub fn params(&self) -> Vec<CellPtr> {
+    pub fn params(&self) -> Vec<P> {
         self.layers
             .iter()
             .map(|l| l.as_ref().params())

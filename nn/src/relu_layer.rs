@@ -1,30 +1,39 @@
 use std::collections::VecDeque;
 
-use crate::serial::Layer;
+// use crate::serial::Layer;
+use interfaces::{ActivationLayer, DLModule, MathPrimitive, MathTensor, Primitive, Tensor};
 use matrix_library::{Matrix, MatrixError};
 use micrograd::{cell_ptr::CellPtr, node::Node};
 
 pub struct ReluLayer {}
 
-impl Layer for ReluLayer {
-    fn forward(&self, x: &Matrix<Node>) -> Result<Matrix<Node>, MatrixError> {
-        let mut res = VecDeque::new();
-        for j in 0..x.shape().0 {
-            let mut row = VecDeque::new();
-            for i in 0..x.shape().1 {
-                let el = x.at((j, i)).unwrap();
-                if el.resolve() > 0.0 {
-                    row.push_back(el.clone());
+impl<T, P> ActivationLayer<T, P> for ReluLayer
+where
+    T: MathTensor<P>,
+    P: MathPrimitive,
+{
+}
+
+impl<T: MathTensor<P>, P: MathPrimitive> DLModule<T, P> for ReluLayer {
+    type DLModuleError = <T as Tensor<P>>::TensorError;
+    fn forward(&self, x: &T) -> Result<T, Self::DLModuleError> {
+        let mut res = Vec::new();
+        for j in 0..x.shape()[0] {
+            let mut row = Vec::new();
+            for i in 0..x.shape()[1] {
+                let el = x.at(vec![j, i]).unwrap();
+                if el.as_f64() > 0.0 {
+                    row.push(el.clone());
                 } else {
-                    row.push_back(Node::from_f64(0.0));
+                    row.push(P::from_f64(0.0));
                 }
             }
-            res.push_back(row);
+            res.push(row);
         }
-        Ok(Matrix::new(res))
+        Ok(T::from_vec(res))
     }
 
-    fn params(&self) -> Vec<CellPtr> {
+    fn params(&self) -> Vec<P> {
         vec![]
     }
 }
@@ -53,8 +62,8 @@ mod tests {
         let out = layer.forward(&x).unwrap();
 
         //calc out manually
-        assert_eq!(out.at((0, 0)).unwrap().resolve(), 0.0);
-        assert_eq!(out.at((1, 0)).unwrap().resolve(), 3.0);
-        assert_eq!(out.at((2, 0)).unwrap().resolve(), 0.0);
+        assert_eq!(out.at(vec![0, 0]).unwrap().resolve(), 0.0);
+        assert_eq!(out.at(vec![1, 0]).unwrap().resolve(), 3.0);
+        assert_eq!(out.at(vec![2, 0]).unwrap().resolve(), 0.0);
     }
 }

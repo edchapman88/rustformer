@@ -7,4 +7,5 @@ edition = "2021"
 
 [dependencies]
 matrix_library = { path = "../../matrix_library" }
+interfaces = { path = "../interfaces" }
 serde = { version = "1.0.203", features = ["derive", "rc"] }

@@ -1,4 +1,5 @@
-use matrix_library::math_utils::{Exp, Pow};
+use interfaces::{Exp, Ln, MathPrimitive, Pow, Primitive, Tensor};
+// use matrix_library::math_utils::{Exp, Pow};
 use matrix_library::Matrix;
 use std::borrow::Borrow;
 use std::cell::RefCell;
@@ -44,6 +45,20 @@ pub enum NodeOp {
     Ln((Node, Cache)),
 }
 
+impl Primitive for Node {}
+impl MathPrimitive for Node {
+    fn from_f64(data: f64) -> Node {
+        Node {
+            op: Rc::new(NodeOp::Leaf(CellPtr::new(data))),
+            label: '#'.to_string(),
+        }
+    }
+
+    fn as_f64(&self) -> f64 {
+        self.resolve()
+    }
+}
+
 impl Node {
     pub fn new(op: NodeOp, label: String) -> Node {
         Node {
@@ -52,28 +67,28 @@ impl Node {
         }
     }
 
-    pub fn from_f64(data: f64) -> Node {
-        Node {
-            op: Rc::new(NodeOp::Leaf(CellPtr::new(data))),
-            label: '#'.to_string(),
-        }
-    }
+    // pub fn from_f64(data: f64) -> Node {
+    //     Node {
+    //         op: Rc::new(NodeOp::Leaf(CellPtr::new(data))),
+    //         label: '#'.to_string(),
+    //     }
+    // }
 
     /// Fill a matrix with new Nodes (references to new data).
     /// Behaves differently to `Matrix::fill()` which clones the provided element - in the case where
     /// the element is a `Node`, the clone call creates a matrix of references to the Node provided as
     /// an argument to the function.
-    pub fn fill_matrix_f64(shape: (usize, usize), data: f64) -> Matrix<Node> {
-        let mut matrix = Vec::new();
-        for _ in 0..shape.0 {
-            let mut row = Vec::new();
-            for _ in 0..shape.1 {
-                row.push(Node::from_f64(data));
-            }
-            matrix.push(row);
-        }
-        Matrix::from_vecs(matrix)
-    }
+    // pub fn fill_matrix_f64(shape: (usize, usize), data: f64) -> Matrix<Node> {
+    //     let mut matrix = Vec::new();
+    //     for _ in 0..shape.0 {
+    //         let mut row = Vec::new();
+    //         for _ in 0..shape.1 {
+    //             row.push(Node::from_f64(data));
+    //         }
+    //         matrix.push(row);
+    //     }
+    //     Matrix::from_vec(matrix)
+    // }
 
     pub fn leaf(&self) -> Option<&CellPtr> {
         if let NodeOp::Leaf(cellptr) = self.op.as_ref() {
@@ -299,14 +314,14 @@ impl Mul for Node {
     }
 }
 
-impl Node {
-    pub fn pow(self, e: Node) -> Node {
-        Node::new(NodeOp::Pow((self, e, Cache::empty())), String::from("^"))
-    }
-    pub fn ln(self) -> Node {
-        Node::new(NodeOp::Ln((self, Cache::empty())), String::from("ln"))
-    }
-}
+// impl Node {
+// pub fn pow(self, e: Node) -> Node {
+//     Node::new(NodeOp::Pow((self, e, Cache::empty())), String::from("^"))
+// }
+// pub fn ln(self) -> Node {
+//     Node::new(NodeOp::Ln((self, Cache::empty())), String::from("ln"))
+// }
+// }
 
 impl Display for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -322,7 +337,13 @@ impl Exp for Node {
 
 impl Pow for Node {
     fn pow(self, exp: Self) -> Self {
-        self.pow(exp)
+        Node::new(NodeOp::Pow((self, exp, Cache::empty())), String::from("^"))
+    }
+}
+
+impl Ln for Node {
+    fn ln(self) -> Node {
+        Node::new(NodeOp::Ln((self, Cache::empty())), String::from("ln"))
     }
 }
 
@@ -511,13 +532,13 @@ mod tests {
     #[test]
     fn matrix_clone() {
         // ::fill() calls clone on the passed value to fill the matrix
-        let a = Matrix::fill((2, 2), Node::from_f64(0.0));
+        let a = Matrix::fill(vec![2, 2], Node::from_f64(0.0));
         // since clone() is overridden for Node, now both "a" and "b" are filled with references to
         // the same Node (the Node passed in to the original ::fill() method)
         let b = a.clone();
-        b.at((0, 0)).unwrap().leaf().unwrap().add_data(1.0);
+        b.at(vec![0, 0]).unwrap().leaf().unwrap().add_data(1.0);
         println! {"{}",b};
-        assert_eq!(1.0, b.at((1, 1)).unwrap().leaf().unwrap().resolve());
-        assert_eq!(1.0, a.at((1, 1)).unwrap().leaf().unwrap().resolve());
+        assert_eq!(1.0, b.at(vec![1, 1]).unwrap().leaf().unwrap().resolve());
+        assert_eq!(1.0, a.at(vec![1, 1]).unwrap().leaf().unwrap().resolve());
     }
 }

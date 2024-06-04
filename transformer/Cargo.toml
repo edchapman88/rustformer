@@ -9,5 +9,7 @@ edition = "2021"
 micrograd = { path = "../micrograd" }
 nn = { path = "../nn" }
 matrix_library = { path = "../../matrix_library" }
+interfaces = { path = "../interfaces" }
 rand = "0.8.5"
 rand_chacha = "0.3.1"
+thiserror = "1.0.50"

@@ -1,5 +1,4 @@
-use micrograd::cell_ptr::CellPtr;
-use serde::{Deserialize, Serialize};
+use micrograd::{cell_ptr::CellPtr, node::Node};
 use std::{fs, iter::zip};
 
 pub struct OptimSGD {
@@ -9,11 +8,19 @@ pub struct OptimSGD {
 }
 
 impl OptimSGD {
-    pub fn new(l_rate: f64, max_itr: usize, params: Vec<CellPtr>) -> OptimSGD {
+    pub fn new(l_rate: f64, max_itr: usize, params: Vec<Node>) -> OptimSGD {
+        let cells = params
+            .iter()
+            .map(|p| {
+                p.leaf()
+                    .expect("all model params expected to be leaves")
+                    .clone()
+            })
+            .collect::<Vec<CellPtr>>();
         OptimSGD {
             l_rate,
             max_itr,
-            params,
+            params: cells,
         }
     }
 

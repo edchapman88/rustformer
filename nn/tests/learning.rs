@@ -1,3 +1,7 @@
+use interfaces::Ln;
+use interfaces::MathPrimitive;
+use interfaces::Pow;
+use interfaces::Tensor;
 use matrix_library::Matrix;
 use micrograd::node::Node;
 use nn::{
@@ -6,7 +10,6 @@ use nn::{
 };
 use rand::{seq::SliceRandom, SeedableRng};
 use rand_chacha::ChaCha8Rng;
-
 #[test]
 fn model_inference() {
     let model = serial::Serial::new(vec![
@@ -15,10 +18,10 @@ fn model_inference() {
         Box::new(DenseLayer::new(1, 2, None)),
         Box::new(SigmoidLayer::new()),
     ]);
-    let x = Matrix::fill((1, 5), Node::from_f64(1.0));
+    let x = Matrix::fill(vec![1, 5], Node::from_f64(1.0));
     let mut y = model.forward(&x).unwrap();
-    y.at_mut((0, 0)).unwrap().backward(1.0);
-    println!("{}", y.at((0, 0)).unwrap());
+    y.at_mut(vec![0, 0]).unwrap().backward(1.0);
+    println!("{}", y.at(vec![0, 0]).unwrap());
 }
 
 #[test]
@@ -43,20 +46,20 @@ fn model_learning() {
 
     let xor: Vec<(Matrix<Node>, Matrix<Node>)> = vec![
         (
-            Matrix::from_vecs(vec![vec![Node::from_f64(0.0)], vec![Node::from_f64(0.0)]]),
-            Matrix::from_vecs(vec![vec![Node::from_f64(0.0)]]),
+            Matrix::from_vec(vec![vec![Node::from_f64(0.0)], vec![Node::from_f64(0.0)]]),
+            Matrix::from_vec(vec![vec![Node::from_f64(0.0)]]),
         ),
         (
-            Matrix::from_vecs(vec![vec![Node::from_f64(1.0)], vec![Node::from_f64(0.0)]]),
-            Matrix::from_vecs(vec![vec![Node::from_f64(1.0)]]),
+            Matrix::from_vec(vec![vec![Node::from_f64(1.0)], vec![Node::from_f64(0.0)]]),
+            Matrix::from_vec(vec![vec![Node::from_f64(1.0)]]),
         ),
         (
-            Matrix::from_vecs(vec![vec![Node::from_f64(0.0)], vec![Node::from_f64(1.0)]]),
-            Matrix::from_vecs(vec![vec![Node::from_f64(1.0)]]),
+            Matrix::from_vec(vec![vec![Node::from_f64(0.0)], vec![Node::from_f64(1.0)]]),
+            Matrix::from_vec(vec![vec![Node::from_f64(1.0)]]),
         ),
         (
-            Matrix::from_vecs(vec![vec![Node::from_f64(1.0)], vec![Node::from_f64(1.0)]]),
-            Matrix::from_vecs(vec![vec![Node::from_f64(0.0)]]),
+            Matrix::from_vec(vec![vec![Node::from_f64(1.0)], vec![Node::from_f64(1.0)]]),
+            Matrix::from_vec(vec![vec![Node::from_f64(0.0)]]),
         ),
     ];
     for itr in 0..max_itr {
@@ -66,8 +69,8 @@ fn model_learning() {
         let y_pred = model.forward(&xi.clone().transpose()).unwrap();
 
         let e = bce(
-            yi.at((0, 0)).unwrap().clone(),
-            y_pred.at((0, 0)).unwrap().clone(),
+            yi.at(vec![0, 0]).unwrap().clone(),
+            y_pred.at(vec![0, 0]).unwrap().clone(),
         );
 
         // also tested with mse for comparison
@@ -88,26 +91,26 @@ fn model_learning() {
     }
 
     for (xi, yi) in xor.iter() {
-        let y_true = yi.at((0, 0)).unwrap();
+        let y_true = yi.at(vec![0, 0]).unwrap();
         println!(
             "{:?} -> true: {}",
             (
-                xi.at((0, 0)).unwrap().resolve(),
-                xi.at((1, 0)).unwrap().resolve()
+                xi.at(vec![0, 0]).unwrap().resolve(),
+                xi.at(vec![1, 0]).unwrap().resolve()
             ),
             y_true.resolve()
         );
         let y_pred = model
             .forward(&xi.clone().transpose())
             .unwrap()
-            .at((0, 0))
+            .at(vec![0, 0])
             .unwrap()
             .clone();
         println!(
             "{:?} -> pred: {}",
             (
-                xi.at((0, 0)).unwrap().resolve(),
-                xi.at((1, 0)).unwrap().resolve()
+                xi.at(vec![0, 0]).unwrap().resolve(),
+                xi.at(vec![1, 0]).unwrap().resolve()
             ),
             y_pred.resolve()
         );

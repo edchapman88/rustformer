@@ -1,4 +1,4 @@
-use matrix_library::math_utils::Exp;
+use interfaces::{MathPrimitive, MathTensor, Tensor};
 use matrix_library::Matrix;
 use micrograd::node::Node;
 
@@ -22,7 +22,10 @@ pub fn softmax(x: &Vec<Vec<f64>>, dim: usize) -> Vec<Vec<f64>> {
     out
 }
 
-pub fn class_cross_entropy(x: &Vec<Matrix<Node>>, y_idx: &Matrix<usize>) -> Node {
+pub fn class_cross_entropy<MT: MathTensor<P>, T: Tensor<usize>, P: MathPrimitive>(
+    x: &Vec<MT>,
+    y_idx: &T,
+) -> P {
     // implementation optimised for discrete target class index as the ground truth
     // input x are logits
     // - x_i + log( sum n->N[ e^x_n ] )
@@ -31,20 +34,24 @@ pub fn class_cross_entropy(x: &Vec<Matrix<Node>>, y_idx: &Matrix<usize>) -> Node
     // [[1,3],[5]]
 
     // x.shape = (B,T,C)
-    let (batch_size, seq_len) = y_idx.shape();
+    let (batch_size, seq_len) = (y_idx.shape()[0], y_idx.shape()[1]);
 
-    let mut loss = Node::from_f64(0.0);
+    let mut loss = P::from_f64(0.0);
 
     for b in 0..batch_size {
         for t in 0..seq_len {
             // println!("{}", x[b]);
-            let mut acc = x[b].at((t, 0)).unwrap().clone().exp();
+            let mut acc = x[b].at(vec![t, 0]).unwrap().clone().exp();
             // println!("{}", acc);
-            for i in 1..x[b].shape().1 {
-                acc += x[b].at((t, i)).unwrap().clone().exp();
+            for i in 1..x[b].shape()[1] {
+                acc += x[b].at(vec![t, i]).unwrap().clone().exp();
             }
             // println!("{}", acc);
-            loss += Node::from_f64(-1.0) * x[b].at((t, *y_idx.at((b, t)).unwrap())).unwrap().clone()
+            loss += P::from_f64(-1.0)
+                * x[b]
+                    .at(vec![t, *y_idx.at(vec![b, t]).unwrap()])
+                    .unwrap()
+                    .clone()
                 + acc.ln()
         }
     }

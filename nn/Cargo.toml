@@ -8,8 +8,10 @@ edition = "2021"
 [dependencies]
 micrograd = { path = "../micrograd" }
 matrix_library = { path = "../../matrix_library" }
+interfaces = { path = "../interfaces" }
 rand = "0.8.5"
 rand_chacha = "0.3.1"
 statrs = "0.16.0"
 serde = "1.0.203"
 serde_json = "1.0.117"
+thiserror = "1.0.50"
